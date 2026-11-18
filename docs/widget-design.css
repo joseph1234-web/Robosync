@@ -1,0 +1,34 @@
+/* Shared widget appearance; generated metrics match native logical pixels. */
+.dashboard-widget{padding:23px;border-radius:14px}
+.dashboard-widget-heading{gap:10px;align-items:flex-start;margin-bottom:18px}
+.dashboard-widget-heading h3{font-size:13px;flex:1;min-width:0}
+.dashboard-widget-heading>.widget-icon{order:-1}
+.widget-icon{width:20px;height:20px;flex:none;stroke:var(--teal);stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.widget-section-heading>.widget-icon{order:-1}
+.widget-section-heading{display:flex;align-items:center;gap:10px}
+.widget-type-tag{border-color:var(--line);color:var(--muted)}
+.widget-gauge path:first-child{stroke:var(--line)}
+.widget-progress{appearance:none;border:0;border-radius:9px;background:var(--line);overflow:hidden}
+.widget-progress::-webkit-progress-bar{background:var(--line)}
+.widget-progress::-webkit-progress-value{background:var(--teal);border-radius:9px}
+.widget-progress::-moz-progress-bar{background:var(--teal);border-radius:9px}
+.dashboard-canvas{gap:18px}
+@media(max-width:720px){.dashboard-canvas{gap:14px}.dashboard-widget{padding:14px}}
+
+/* Per-element roles, including retained legacy accent behavior. */
+.dashboard-widget{background:var(--widget-surface,var(--surface));border-color:var(--widget-border,var(--line))}
+.dashboard-widget-heading h3,.widget-section-heading{color:var(--widget-title,var(--muted))}
+.widget-icon{stroke:var(--widget-icon,var(--teal))}
+.widget-reading,.widget-text-reading,.widget-note-copy{color:var(--widget-value,var(--navy))}
+.widget-gauge-value{fill:var(--widget-value,var(--navy))}
+.widget-gauge path:first-child{stroke:var(--widget-track,var(--line))}
+.widget-gauge path:nth-child(2){stroke:var(--widget-meter,var(--teal))}
+.sensor-chart path{stroke:var(--widget-plot,var(--teal))}.sensor-chart circle{fill:var(--widget-plot,var(--teal))}
+.sensor-chart line{stroke:var(--widget-track,var(--line))}
+.widget-progress::-webkit-progress-bar{background:var(--widget-track,var(--line))}
+.widget-progress::-webkit-progress-value{background:var(--widget-meter,var(--teal))}
+.widget-progress::-moz-progress-bar{background:var(--widget-meter,var(--teal))}
+.widget-face{display:block;width:100%;overflow:hidden}.studio-card.has-face{padding:0}.studio-card.has-face .card-tools,.studio-card.has-face .card-binding{margin:8px 14px}
+.widget-status.is-on{color:var(--widget-value,var(--navy))}.widget-status.is-on .widget-led{background:var(--widget-meter,var(--teal))}
+.io-control input,.io-control select{color:var(--widget-value,var(--navy));background:var(--widget-surface,var(--surface));border-color:var(--widget-border,var(--line))}
+.io-display{color:var(--widget-value,var(--navy))}.io-display>progress{accent-color:var(--widget-meter,var(--teal))}

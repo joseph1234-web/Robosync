@@ -1,0 +1,2 @@
+// Apply the saved appearance before styles load; no account data is stored here.
+(()=>{try{const ids=['mint','midnight','ocean','violet','sunrise','contrast'],saved=localStorage.getItem('robosynct.theme.v1'),theme=saved==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'midnight':'mint'):ids.includes(saved)?saved:'mint';document.documentElement.setAttribute('data-theme',theme);document.documentElement.style.colorScheme=theme==='midnight'?'dark':'light';}catch{}})();

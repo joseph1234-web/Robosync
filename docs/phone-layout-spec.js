@@ -1,0 +1,2 @@
+// Generated from design/phone-layout.json
+export const PHONE_LAYOUT_SPEC = {"version":1,"previewWidths":[360,390,412],"canvasInset":18,"gap":14,"collapseBelow":340,"largeTextScale":1.35,"compactMinWidth":390,"compactMaxTextScale":1.1,"standardSpan":6,"fullSpan":12,"compactSpan":4,"minHeight":160,"maxHeight":960,"complexTypes":["chart","table","camera","multi","bar","timeline","heatmap","apply","thermostat","schedule","console","gps","vector","panel"],"compactTypes":["value","counter","led","status","health","alarm","compass"]};

@@ -1,0 +1,5 @@
+project_id = "zxwtofzjnqshrojsvkhn"
+
+# Device JPEG endpoint uses scoped private media credentials; owner view validates Auth in its RPC.
+[functions.rs-media]
+verify_jwt = false

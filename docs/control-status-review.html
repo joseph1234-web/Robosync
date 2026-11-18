@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer"><title>Widget preview · RoboSynct</title>
+  <script src="./theme-init.js"></script>
+  <link rel="stylesheet" href="./themes.css?v=0.36.1">
+  <link rel="stylesheet" href="./widget-design.css?v=0.37.0">
+  <link rel="stylesheet" href="./io.css?v=0.37.0">
+  <link rel="stylesheet" href="./control-status-review.css?v=0.37.0">
+  <script type="module" src="./control-status-review.js?v=0.37.0"></script>
+</head>
+<body><main>
+  <header><a class="brand" href="./"><b aria-hidden="true">R</b> RoboSynct</a><a href="./android-app.html">Get the apps</a></header>
+  <section class="intro"><h1>Widget preview</h1><p>Try sensor readings and controls with a simulated ESP32.</p></section>
+  <section class="tools" aria-label="Preview settings">
+    <label>Board status<select id="mode"><option value="ready">Ready</option><option value="stale">Control link stale</option><option value="firmware">Sensor-only firmware</option><option value="failure">Status request fails</option><option value="offline">Offline</option></select></label>
+    <label>Preview width<select id="width"><option value="full" selected>Desktop</option><option value="360">360dp</option><option value="390">390dp</option><option value="412">412dp</option></select></label>
+  </section>
+  <section id="canvas" class="grid" aria-label="Simulated widgets">
+    <article id="gauge" class="card dashboard-widget"><h2>Potentiometer <span class="widget-pin">V0</span></h2>
+      <svg id="gauge-face" class="widget-gauge" viewBox="0 0 240 140" role="img" aria-label="Potentiometer 1,024 of 4,095">
+        <path d="M25 105a95 95 0 0 1 190 0" fill="none" stroke="var(--line)" stroke-width="12" stroke-linecap="round"/>
+        <path id="gauge-arc" d="M25 105a95 95 0 0 1 190 0" fill="none" stroke="var(--teal)" stroke-width="12" stroke-linecap="round" pathLength="100" stroke-dasharray="25 100"/>
+        <text id="gauge-value" class="widget-gauge-value" x="120" y="89" text-anchor="middle">1,024</text>
+        <text class="unit" x="120" y="109" text-anchor="middle">raw</text>
+        <text class="unit" x="25" y="131" text-anchor="middle">0</text><text class="unit" x="215" y="131" text-anchor="middle">4,095</text>
+      </svg><button id="next-sample" type="button">New sample</button>
+      <span id="sample-message" class="sr" role="status"></span>
+    </article>
+  </section>
+  <details class="log"><summary>Command log <span id="count" role="status">0 explicit requests</span></summary><pre id="log" aria-label="Synthetic acknowledgement log">No commands sent.</pre><button id="reset" type="button">Clear review log</button></details>
+</main></body></html>
