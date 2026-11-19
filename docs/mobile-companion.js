@@ -19,6 +19,26 @@ function render(){
     else if(w.type==='heading')heading.className='widget-section-heading';
     else if(w.type==='divider')card.append(element('hr','widget-divider'));
     else if(w.type==='camera')card.append(element('p','form-help','Camera / media widget · Its source settings are synced. Browser cameras and local files belong to the device using them and are not transferred.'));
+    else if(source?.channel?.direction==='output'){
+      // Paired-phone dashboards are read-only: render only a current-boot applied receipt
+      // returned by the authenticated connection. Never send or replay output commands.
+      const confirmed=source.confirmed_output,raw=confirmed?.value,driver=w.type;
+      const rgb=driver==='rgb'&&Array.isArray(raw)&&raw.length===3&&raw.every(n=>Number.isInteger(n)&&n>=0&&n<=255);
+      const bit=Array.isArray(raw)&&raw.length>0&&raw[0]===1?true:Array.isArray(raw)&&raw.length>0&&raw[0]===0?false:typeof raw==='boolean'?raw:null;
+      if(rgb){
+        const hex='#'+raw.map(n=>n.toString(16).padStart(2,'0')).join('').toUpperCase();
+        const preview=element('div','widget-status','Board-reported RGB · '+hex+' · '+raw.join(', '));
+        const swatch=element('span','widget-led');swatch.style.backgroundColor=hex;preview.prepend(swatch);card.append(preview);
+      }else if(driver==='switch'&&bit!==null){
+        card.append(element('p','widget-status'+(bit?' is-on':''),'Board-reported relay · '+(bit?'On':'Off')));
+      }else{
+        card.append(element('p','widget-no-data','Board application unconfirmed · last selected color is not proof of application.'));
+      }
+      if(confirmed&&(rgb||driver==='switch'&&bit!==null)){
+        const when=Date.parse(confirmed.applied_at);
+        card.append(element('p','form-help','Board ACK'+(Number.isFinite(when)?' · '+new Date(when).toLocaleString():'')+' · Physical feedback unavailable'));
+      }
+    }
     else if(!source||!latest)card.append(element('p','widget-no-data','No valid stored readings available for this stream.'));
     else{
       const type=source.channel.value_type,value=streamValue(latest,type),formatted=type==='number'?number(value)+(source.channel.unit?' '+source.channel.unit:''):type==='boolean'?(value?w.on_label||'On':w.off_label||'Off'):String(value).slice(0,2000);
