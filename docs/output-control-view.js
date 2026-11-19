@@ -3,7 +3,7 @@ import { controlReadiness,controlResult,authenticatedControlBoot } from './contr
 import { CONTROL_STATE_SPEC } from './control-state-spec.js?v=0.36.1';
 import { streamDescriptor,negotiateStreamCapabilities,validateControlValue } from './stream-contract.js?v=0.36.1';
 import { behavior,validateBehavior } from './widget-behavior.js?v=0.36.1';
-import { executorReason,advancedKind,commandState,schedulePayload,thermostatPayload } from './advanced-controls.js?v=0.36.1';
+import { executorReason,advancedKind,commandState,schedulePayload,thermostatPayload } from './advanced-controls.js?v=0.38.0';
 /** Foreground owner controls. Draft input is never sent by render, refresh or reconnect. */
 export function renderOutputControl(w,{channel,device,request,canUse,active,client,channels=[channel],readings=()=>[],onDispose=()=>{},isOwner=canUse,isOnline=()=>globalThis.navigator?.onLine!==false,statusSource=null}){
  const box=document.createElement('div');box.className='io-control';
