@@ -154,3 +154,276 @@
   .workspace .dashboard-widget,.workspace .project-card,.workspace .device-item,
   .workspace .nav-link,.workspace .io-control button {transition:none;}
 }
+
+
+/* RoboSynct UI Refresh 2.0 — consistent page design across the public site.
+ * CSS-only. Existing IDs, forms, scripts, credentials, storage and command flows are unchanged.
+ * Includes reduced-motion behavior and respects all named CSS variable themes.
+ */
+
+/* Shared canvas for help pages, companion tools and standalone editors. */
+:where(body:has(> main.android-page),body:has(> main.direct-page),
+       body:has(> main.usb-page),body:has(> main.mobile-companion),
+       body:has(> main.guide),body:has(> main:not([class]))) {
+  background:var(--bg,#f5f8fa);
+  color:var(--ink,#20394b);
+  -webkit-font-smoothing:antialiased;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,.mobile-companion,body>main:not([class])) {
+  line-height:1.58;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(h1,h2,h3) {
+  color:var(--navy,var(--ink,#20394b));
+  letter-spacing:-.035em;
+  line-height:1.18;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  h1 {font-size:clamp(30px,4.2vw,48px);}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  h2 {font-size:clamp(21px,2.5vw,29px);}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  p {line-height:1.7;}
+:where(.android-page,.direct-page,.usb-page,.guide,.mobile-companion,body>main:not([class]))
+  :where(a,button,input,textarea,select,summary):focus-visible {
+  outline:3px solid var(--teal,#007f79);
+  outline-offset:3px;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,.mobile-companion,body>main:not([class]))
+  :where(button,a.button,input,select,textarea) {
+  accent-color:var(--teal,#007f79);
+}
+:where(.android-page,.direct-page,.usb-page,.guide,.mobile-companion,body>main:not([class]))
+  :where(.button,button) {touch-action:manipulation;}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(.button,button):not(:disabled) {
+  transition:background-color .16s ease,border-color .16s ease,transform .16s ease;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(.button,button):not(:disabled):active {transform:translateY(1px);}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(input,textarea,select) {
+  border-radius:11px;
+  border-color:var(--line,#dce5eb);
+  background:var(--surface,#fff);
+  color:var(--ink,#20394b);
+}
+:where(.android-page,.direct-page,.usb-page,.guide,.mobile-companion,body>main:not([class]))
+  :where(nav,.android-nav,.direct-nav,.usb-nav) {
+  gap:12px;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(nav,.android-nav,.direct-nav,.usb-nav) a {
+  border-radius:10px;
+  text-underline-offset:3px;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(nav,.android-nav,.direct-nav,.usb-nav) a:hover {
+  color:var(--teal,#007f79);
+}
+
+/* Reusable card system for onboarding, firmware, classrooms, research and docs. */
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(.android-section,.android-step,.app-section,.direct-section,.direct-card,
+  .direct-state,.usb-step,.usb-boundary,.usb-recovery,.lab-panel,.fields,
+  .pair,.table-wrap,.report-card,.info-card,.android-demo-callout) {
+  border-color:var(--line,#dce5eb);
+  border-radius:18px;
+}
+:where(.android-page,.direct-page,.usb-page,.guide)
+  :where(.android-section,.direct-section,.direct-card,.usb-step,.usb-boundary,.usb-recovery) {
+  box-shadow:0 8px 24px var(--shadow,rgba(16,45,64,.08));
+}
+:where(.android-page,.direct-page,.usb-page,.guide)
+  :where(.android-step,.direct-card,.usb-step) {
+  transition:border-color .16s ease,box-shadow .16s ease;
+}
+:where(.android-page,.direct-page,.usb-page,.guide)
+  :where(.android-step,.direct-card,.usb-step):hover {
+  border-color:var(--teal,#007f79);
+  box-shadow:0 12px 30px var(--shadow,rgba(16,45,64,.1));
+}
+:where(.android-page,.direct-page,.usb-page)
+  :where(.android-hero,.direct-hero,.usb-hero) {
+  border-radius:22px;
+  border:1px solid var(--line,#dce5eb);
+  background:linear-gradient(120deg,var(--accent-soft,#ddf5ed),var(--soft,#eff7f2) 65%,var(--surface,#fff));
+  box-shadow:0 12px 34px var(--shadow,rgba(16,45,64,.09));
+}
+:where(.android-page,.direct-page,.usb-page)
+  :where(.android-downloads,.direct-actions,.usb-downloads) {
+  gap:12px;
+  flex-wrap:wrap;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(table) {
+  border-collapse:separate;
+  border-spacing:0;
+  color:var(--ink,#20394b);
+}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(th) {
+  color:var(--navy,#102d40);
+  background:var(--soft,#eff7f2);
+  font-weight:720;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(th,td) {
+  border-bottom:1px solid var(--line,#dce5eb);
+  padding:10px 14px;
+  vertical-align:top;
+}
+:where(.android-page,.direct-page,.usb-page,.guide)
+  :where(.direct-table-wrap,.usb-table-wrap,.table-wrap) {
+  border-radius:14px;
+  border:1px solid var(--line,#dce5eb);
+  overflow-x:auto;
+  max-width:100%;
+}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  :where(code,pre) {border-radius:8px;}
+:where(.android-page,.direct-page,.usb-page,.guide,body>main:not([class]))
+  pre {max-width:100%;overflow:auto;}
+
+/* Phone browser companion — read-only confirmed status stays functionally unchanged. */
+.mobile-companion-body {
+  background:var(--bg,#f5f8fa);
+  min-height:100dvh;
+}
+.mobile-companion {
+  color:var(--ink,#20394b);
+}
+.mobile-companion .lab-panel,
+.mobile-companion .dashboard-widget {
+  border:1px solid var(--line,#dce5eb);
+  border-radius:17px;
+  box-shadow:0 8px 25px var(--shadow,rgba(16,45,64,.07));
+  background:var(--surface,#fff);
+}
+.mobile-companion .dashboard-canvas {gap:13px;}
+.mobile-companion .dashboard-widget-heading h3 {font-size:14px;font-weight:720;}
+.mobile-companion .widget-reading {font-size:clamp(26px,6vw,38px);font-weight:720;}
+.mobile-companion .widget-no-data {line-height:1.6;}
+
+/* Main workspace navigation and low-friction hierarchy. */
+.workspace .sidebar .easy-sidebar-links {border-radius:12px;}
+.workspace .sidebar .easy-sidebar-links button {
+  min-height:40px;letter-spacing:.01em;
+}
+.workspace .account {
+  border-top:1px solid var(--line,#dce5eb);
+  padding-top:14px;
+}
+.workspace .main-content .section-heading {gap:12px;flex-wrap:wrap;}
+.workspace .project-grid {gap:17px;}
+.workspace .project-card {
+  border-radius:18px;
+  background:linear-gradient(160deg,var(--surface,#fff) 65%,var(--soft,#eff7f2) 100%);
+}
+.workspace .project-card-top {gap:10px;}
+.workspace .project-card-footer {gap:10px;flex-wrap:wrap;}
+.workspace .device-list {gap:12px;}
+.workspace .device-item.selected {
+  border-color:var(--teal,#007f79);
+  background:var(--accent-soft,#ddf5ed);
+}
+.workspace .panel-heading {gap:12px;flex-wrap:wrap;}
+.workspace .dashboard-heading .dashboard-view-actions select,
+.workspace .dashboard-theme-control select {
+  border:1px solid var(--line,#dce5eb);
+  border-radius:10px;
+  color:var(--ink,#20394b);
+  background:var(--surface,#fff);
+}
+.workspace .dashboard-widget .widget-status {
+  border-radius:10px;
+}
+.workspace .dashboard-widget .widget-progress {
+  border-radius:999px;
+}
+.workspace .dashboard-widget :where(.widget-data-updated,.widget-binding,.widget-progress-value) {
+  font-size:12px;
+}
+.workspace .dashboard-widget .widget-pin,
+.workspace .dashboard-widget .widget-type-tag {
+  border-radius:9px;
+}
+.workspace .io-control input[role="switch"] {
+  accent-color:var(--widget-accent,var(--teal,#007f79));
+}
+.workspace .io-control [data-control-connection] {
+  border:1px solid var(--line,#dce5eb);
+}
+.workspace .io-control .command-result {overflow-wrap:anywhere;}
+.workspace .io-control .command-result:not(:empty) {padding-top:4px;}
+.workspace .io-control details summary {color:var(--muted,#557265);}
+.workspace .io-control details[open] summary {color:var(--ink,#20394b);}
+.workspace .dashboard-view-actions .live-refresh-label {
+  border-radius:11px;
+  background:var(--soft,#eff7f2);
+}
+.workspace .dashboard-tabbar [role="tab"][aria-selected="true"] {
+  font-weight:740;
+}
+
+/* Dashboard Studio: familiar editor rails and clear selection surfaces. */
+.studio .studio-header {gap:16px;flex-wrap:wrap;}
+.studio .studio-workbench {gap:18px;}
+.studio .canvas-panel,.studio .outline-panel,.studio .cloud-panel,.studio .device-panel {
+  border:1px solid var(--line,#dce5eb);
+  background:var(--surface,#fff);
+}
+.studio .studio-card {
+  border-radius:15px;
+  border-color:var(--line,#dce5eb);
+  transition:border-color .16s ease,box-shadow .16s ease;
+}
+.studio .studio-card:focus-within {border-color:var(--teal,#007f79);}
+.studio .studio-savebar {gap:12px;flex-wrap:wrap;}
+.studio .studio-toolbar {gap:10px;}
+.studio .studio-tabs button[aria-selected="true"] {font-weight:730;}
+.studio #preview {border-radius:20px;}
+
+/* Widget gallery and comparison/review tools. */
+body>main:not([class]) {
+  max-width:min(1140px,calc(100% - 44px));
+  margin:22px auto 70px;
+  padding:18px 0;
+}
+body>main:not([class]) :where(.grid,.tools) {gap:14px;}
+body>main:not([class]) :where(.grid>*:not(script),.tools>*:not(script)) {
+  border-radius:14px;
+}
+body>header {
+  border-color:var(--line,#dce5eb);
+  background:var(--surface,#fff);
+}
+body>header :where(a,button):focus-visible {
+  outline:3px solid var(--teal,#007f79);outline-offset:3px;
+}
+
+/* Clear responsive rhythm; editable 12-column widget/phone layouts retain their logic. */
+@media(max-width:960px) {
+  .studio .studio-workbench {gap:12px;}
+  .workspace .workspace-stats {gap:10px;}
+  .workspace .project-grid {gap:12px;}
+  .workspace .dashboard-heading .dashboard-view-actions {align-items:stretch;}
+}
+@media(max-width:680px) {
+  .workspace .workspace-stats {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .workspace .workspace-stats .stat:last-child {grid-column:1/-1;}
+  .workspace .dashboard-widget .widget-reading {font-size:clamp(26px,7vw,38px);}
+  .workspace .project-grid {gap:10px;}
+  .workspace .device-item {padding:13px;}
+  .workspace .dashboard-widget .widget-binding {overflow-wrap:anywhere;}
+  .mobile-companion .dashboard-canvas {gap:10px;}
+  body>main:not([class]) {max-width:calc(100% - 28px);margin:10px auto 40px;}
+  :where(.android-page,.direct-page,.usb-page,.guide) h1 {font-size:clamp(28px,9vw,38px);}
+  :where(.android-page,.direct-page,.usb-page) :where(.android-hero,.direct-hero,.usb-hero) {border-radius:15px;}
+  :where(.android-page,.direct-page,.usb-page,.guide) :where(.direct-card,.usb-step,.android-step) {border-radius:13px;}
+}
+@media(prefers-reduced-motion:reduce) {
+  :where(.android-page,.direct-page,.usb-page,.guide)
+    :where(.android-step,.direct-card,.usb-step,.button,button) {transition:none;}
+  .studio .studio-card {transition:none;}
+}
