@@ -1,0 +1,156 @@
+/* RoboSynct UI refresh v1 — presentation only; no data/control behavior changes. */
+/* Uses existing theme variables so Mint, Midnight, Ocean, Violet, Sunrise and Contrast remain functional. */
+.workspace, .login-layout {
+  --ui-radius: 18px;
+  --ui-depth: 0 8px 26px var(--shadow, rgba(11,43,48,.06));
+  --ui-depth-hover: 0 16px 36px var(--shadow, rgba(11,43,48,.12));
+}
+.workspace .main-content { max-width: 1400px; padding-top: 32px; }
+.workspace .sidebar {
+  padding-top: 29px;
+  background: linear-gradient(180deg,var(--surface) 0%,var(--surface) 70%,var(--soft) 100%);
+  box-shadow: 4px 0 28px var(--shadow);
+}
+.workspace .sidebar .brand {margin-bottom: 26px; letter-spacing: -.65px;}
+.workspace .sidebar-label {letter-spacing:1.7px; text-transform:uppercase; opacity:.8;}
+.workspace .nav-link,.workspace .easy-sidebar-links button {
+  border-radius:12px;
+  transition:background-color .17s ease,color .17s ease,border-color .17s ease;
+}
+.workspace .nav-link.active {box-shadow: inset 3px 0 var(--teal); font-weight:750;}
+.workspace .nav-link:hover,.workspace .easy-sidebar-links button:hover {background:var(--soft);}
+.workspace .topbar {
+  min-height:74px; height:auto; padding-top:14px; padding-bottom:14px;
+  background:var(--surface); border-bottom:1px solid var(--line);
+  position:sticky; top:0; z-index:3;
+  box-shadow:0 3px 18px var(--shadow);
+  gap:16px;
+}
+.workspace .topbar-status {gap:12px; flex-wrap:wrap;}
+.workspace .page-heading h1 {font-size:clamp(29px,3.4vw,42px);letter-spacing:-1.3px;}
+.workspace .page-heading p.subtle {margin-top:6px;max-width:660px;}
+.workspace .welcome-banner {
+  border:1px solid var(--line);border-radius:20px;
+  background:linear-gradient(110deg,var(--accent-soft) 0%,var(--soft) 70%,var(--surface) 100%);
+  box-shadow:var(--ui-depth);
+}
+.workspace .welcome-banner .button {min-height:46px;}
+.workspace .workspace-stats {gap:14px;margin:16px 0 28px;}
+.workspace .workspace-stats .stat {
+  border:1px solid var(--line);border-radius:16px;
+  background:var(--surface);padding:20px 22px;box-shadow:var(--ui-depth);
+}
+.workspace .workspace-stats .stat strong {letter-spacing:-.5px;}
+.workspace .project-card,.workspace .lab-panel,.workspace .device-panel {
+  border:1px solid var(--line);border-radius:var(--ui-radius);
+  box-shadow:var(--ui-depth);
+}
+.workspace .project-card {transition:box-shadow .18s ease,border-color .18s ease;}
+.workspace .project-card:hover {box-shadow:var(--ui-depth-hover);border-color:var(--teal);}
+.workspace .device-item {
+  border-radius:13px;border-color:var(--line);background:var(--surface);
+  transition:background .15s ease,border-color .15s ease;
+}
+.workspace .device-item:hover {border-color:var(--teal);background:var(--soft);}
+.workspace .project-tabs {gap:8px;overflow-x:auto;padding:4px 1px 0;scrollbar-width:thin;}
+.workspace .project-tabs button {
+  white-space:nowrap;border-radius:11px 11px 0 0;padding-left:15px;padding-right:15px;
+  transition:background-color .15s,color .15s;
+}
+.workspace .project-tabs button[aria-selected=true],.workspace .project-tabs button.active {
+  background:var(--accent-soft);color:var(--teal);
+}
+.workspace .dashboard-heading {align-items:flex-start;gap:14px;flex-wrap:wrap;}
+.workspace .dashboard-heading h2 {font-size:clamp(24px,3vw,34px);font-weight:730;letter-spacing:-1px;}
+.workspace .dashboard-view-actions {display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.workspace .dashboard-view-actions .button {min-height:43px;}
+.workspace .dashboard-status-row {font-size:11px;line-height:1.5;gap:8px;flex-wrap:wrap;}
+.workspace .dashboard-canvas {gap:18px;}
+.workspace .dashboard-widget {
+  border:1px solid var(--widget-border,var(--line));border-radius:20px;
+  padding:22px;background:var(--widget-surface,var(--surface));
+  box-shadow:var(--ui-depth); transition:border-color .16s ease,box-shadow .16s ease;
+}
+.workspace .dashboard-widget:hover {box-shadow:var(--ui-depth-hover);}
+.workspace .dashboard-widget:focus-within {border-color:var(--widget-accent,var(--teal));}
+.workspace .dashboard-widget-heading {align-items:center;gap:12px;margin-bottom:16px;}
+.workspace .dashboard-widget-heading h3 {font-size:14px;font-weight:720;letter-spacing:-.2px;line-height:1.35;}
+.workspace .widget-reading {font-size:clamp(29px,3.4vw,43px);font-weight:720;letter-spacing:-1.4px;line-height:1.2;}
+.workspace .widget-stat-label,.workspace .widget-binding {line-height:1.55;}
+.workspace .widget-progress {height:14px;margin-top:12px;}
+.workspace .widget-progress-value {font-size:13px;}
+.workspace .widget-no-data {line-height:1.65;}
+.workspace .dashboard-widget .widget-tools button {border-radius:9px;min-width:38px;min-height:38px;}
+.workspace .dashboard-edit-toolbar {border-radius:15px;border-color:var(--line);}
+.workspace .dashboard-empty {border-radius:18px;}
+.workspace .dashboard-tabbar {padding-bottom:5px;scrollbar-width:thin;}
+.workspace .dashboard-tabbar [role=tab] {
+  border-radius:10px;min-height:42px;padding:9px 15px;
+  transition:background-color .16s ease;
+}
+.workspace .io-control {gap:12px;}
+.workspace .io-control [data-control-connection] {
+  border-radius:999px;padding:6px 12px;font-weight:750;font-size:12px;
+}
+.workspace .io-control fieldset {gap:10px;}
+.workspace .io-control fieldset button {min-height:44px;}
+.workspace .io-control button {
+  border-radius:12px;min-height:44px;min-width:44px;
+  padding:10px 16px; font-size:13px;
+}
+.workspace .io-control button:hover:enabled {border-color:var(--widget-accent,var(--teal));}
+.workspace .io-control input[type="range"] {accent-color:var(--widget-accent,var(--teal));min-height:30px;}
+.workspace .io-control input[type="color"] {
+  padding:5px;border-radius:12px;min-height:42px;
+}
+.workspace .io-control details {
+  border-top:1px solid var(--widget-border,var(--line));
+  margin-top:8px;padding-top:8px;
+}
+.workspace .io-control .command-result {font-size:13px;line-height:1.55;}
+.workspace .io-control [data-state="ready"] {background:var(--accent-soft);color:var(--teal);}
+.workspace .io-control [data-state="stale"] {background:var(--warning-soft);color:var(--warning);}
+.login-layout .signin-inner {max-width:395px;}
+.login-layout .signin-panel {background:var(--surface);}
+.login-layout .signin-inner h2 {font-size:clamp(29px,3vw,40px);}
+.login-layout .brand-panel {background:var(--brand-bg,var(--navy));}
+.login-layout .brand-mark {box-shadow:0 5px 22px rgba(0,127,121,.2);}
+.login-layout .social-button,.login-layout .button,.login-layout input {border-radius:12px;}
+.login-layout .auth-tabs {border-radius:12px;}
+/* Studio uses the same visual language; do not alter the editable canvas geometry. */
+.studio .studio-heading h1 {font-size:clamp(28px,3.5vw,40px);}
+.studio .studio-savebar,.studio .canvas-panel,.studio .outline-panel,.studio .cloud-panel,.studio .device-panel {
+  border-radius:17px;box-shadow:0 8px 24px var(--shadow);
+}
+.studio .studio-savebar {backdrop-filter:saturate(1.15);}
+.studio .studio-tabs {overflow-x:auto;scrollbar-width:thin;}
+.studio .studio-tabs button {white-space:nowrap;}
+@media (max-width:1024px) {
+  .workspace .main-content {padding-left:26px;padding-right:26px;}
+  .workspace .topbar {padding-left:26px;padding-right:26px;}
+  .workspace .workspace-stats .stat {padding:16px;}
+  .workspace .dashboard-widget {padding:18px;}
+}
+@media (max-width:680px) {
+  .workspace .main-content {padding:20px 14px 30px;}
+  .workspace .topbar {padding:11px 14px;min-height:60px;}
+  .workspace .topbar-status {gap:8px;}
+  .workspace .page-heading {align-items:flex-start;flex-wrap:wrap;gap:10px;}
+  .workspace .page-heading h1 {font-size:30px;}
+  .workspace .welcome-banner {padding:17px;}
+  .workspace .workspace-stats {gap:8px;}
+  .workspace .workspace-stats .stat {padding:13px;border-radius:13px;}
+  .workspace .dashboard-canvas {gap:12px;}
+  .workspace .dashboard-widget {padding:15px;border-radius:16px;}
+  .workspace .dashboard-widget-heading {margin-bottom:12px;}
+  .workspace .dashboard-view-actions {width:100%;gap:7px;}
+  .workspace .dashboard-view-actions .button {flex:1 1 auto;}
+  .workspace .io-control fieldset {gap:7px;}
+  .workspace .io-control button {padding:9px 12px;}
+  .login-layout .signin-panel {padding:30px 20px;}
+  .studio .studio-savebar {border-radius:12px;}
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace .dashboard-widget,.workspace .project-card,.workspace .device-item,
+  .workspace .nav-link,.workspace .io-control button {transition:none;}
+}
