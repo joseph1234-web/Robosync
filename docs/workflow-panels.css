@@ -1,0 +1,29 @@
+.workflow-modes, .workflow-facts {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin:16px 0;
+}
+.workflow-modes > section, .workflow-facts > div {
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface);
+  padding:14px;
+}
+.workflow-modes h3 { margin:0; color:var(--navy); font-size:1rem; }
+.workflow-modes p { margin:8px 0 12px; color:var(--muted); font-size:.9rem; }
+.workflow-modes .button { min-height:44px; }
+.workflow-facts dt { color:var(--muted); font-size:.8125rem; }
+.workflow-facts dd { margin:5px 0 0; font-size:.9rem; font-weight:650; overflow-wrap:anywhere; }
+.workflow-step { border:1px solid var(--line); border-radius:10px; padding:14px; margin:12px 0; min-width:0; }
+.workflow-step legend { color:var(--navy); font-weight:700; padding:0 7px; }
+.workflow-step-progress { font-size:.875rem; color:var(--teal); }
+.workflow-timing { padding:10px 0; }
+.workflow-timing summary { cursor:pointer; }
+#rule-dialog, #qr-dialog { max-height:calc(100dvh - 28px); overflow:auto; }
+.mobile-companion :is(.button,button) { min-height:44px; }
+.mobile-companion .dashboard-widget h3 { font-size:1rem; }
+@media (max-width:520px) {
+  .workflow-modes { grid-template-columns:1fr; }
+  .workflow-step .form-pair { display:block; }
+}

@@ -1,4 +1,5 @@
 import { summarizeAnalytics, bucketAnalytics, analyticsReadingsCsv, analyticsCsvCell } from './analytics-math.js?v=0.36.1';
+import { readingDelivery } from './reading-delivery.js?v=3.0.0';
 export function createAnalytics({request,friendlyError,getSession,getGeneration}){
   const $=id=>document.getElementById(id),show=(id,on=true)=>{$(id).hidden=!on;},message=(id,text)=>{$(id).textContent=text;show(id,!!text);};
   let project=null,devices=[],sources=[],snapshot=null,version=0,requestVersion=0,loading=false,dirty=false;
@@ -21,15 +22,17 @@ export function createAnalytics({request,friendlyError,getSession,getGeneration}
       const el=$('analytics-stream-'+i),previous=el.value;el.replaceChildren();
       if(i>1||!sources.length){const none=document.createElement('option');none.value='';none.textContent=i>1?'No comparison':'No numeric streams available';el.append(none);}
       for(const source of sources){const option=document.createElement('option');option.value=source.channel.id;option.textContent=source.device.label+' / '+source.channel.title+(source.channel.unit?' ('+source.channel.unit+')':'');el.append(option);}
-      el.value=sources.some(s=>s.channel.id===previous)?previous:i===1?(sources.find(s=>s.channel.channel_key==='temperature')||sources[0])?.channel.id||'':'';
+      const first=sources.find(source=>source.channel.channel_key==='temperature')||sources[0];
+      const keys=['temperature','humidity','sound_raw'],match=first&&sources.find(source=>source.device.id===first.device.id&&source.channel.channel_key===keys[i-1]);
+      el.value=previous&&sources.some(source=>source.channel.id===previous)?previous:i===1?first?.channel.id||'':match?.channel.id||'';
     }
   }
   async function open(nextProject,nextDevices){
     if(project?.id!==nextProject.id){reset();project=nextProject;$('analytics-range').value='24';$('analytics-bucket').value='60';$('analytics-interval').value='60';show('analytics-custom-range',false);}
     devices=nextDevices.filter(d=>d.project_id===project.id);version++;const ctx=context();loading=true;dirty=false;snapshot=null;show('analytics-results',false);controls();show('analytics-loading');
     try{
-      const all=[];for(let i=0;i<devices.length;i+=40){const ids=devices.slice(i,i+40).map(d=>d.id);const data=rows(await request('/rest/v1/channels?select=id,device_id,channel_key,title,unit,value_type&device_id=in.('+ids.join(',')+')&order=title.asc&limit=1000',{authenticated:true}));if(!current(ctx))return;all.push(...data);}
-      if(!current(ctx))return;sources=all.filter(c=>c.value_type==='number').map(channel=>({channel,device:devices.find(d=>d.id===channel.device_id)})).filter(s=>s.device);populateSources();
+      const all=[];for(let i=0;i<devices.length;i+=40){const ids=devices.slice(i,i+40).map(d=>d.id);const data=rows(await request('/rest/v1/channels?select=id,device_id,channel_key,title,unit,value_type,direction&device_id=in.('+ids.join(',')+')&order=title.asc&limit=1000',{authenticated:true}));if(!current(ctx))return;all.push(...data);}
+      if(!current(ctx))return;sources=all.filter(c=>c.value_type==='number'&&c.direction!=='output').map(channel=>({channel,device:devices.find(d=>d.id===channel.device_id)})).filter(s=>s.device);populateSources();
       if(!sources.length){message('analytics-notice','Add a simulated device and numeric stream in Devices & data, then return to Analytics.');return;}
       await applyFilters();
     }catch(err){if(current(ctx))message('analytics-error',friendlyError(err,'Couldn’t load sensor sources. Reopen Analytics to retry.'));}
@@ -108,7 +111,9 @@ export function createAnalytics({request,friendlyError,getSession,getGeneration}
       const s=result.stats,tr=document.createElement('tr'),first=appendText(tr,'td',sourceName(result.source));appendText(first,'small',result.source.channel.unit||'No unit');
       for(const value of [s?number(s.count)+' / '+number(s.records):'Unavailable',s?number(s.min):'—',s?number(s.mean):'—',s?number(s.median):'—',s?number(s.max):'—',s?number(s.excluded):'—'])appendText(tr,'td',value);$('analytics-summary-body').append(tr);
       const card=document.createElement('section');card.className='analytics-chart-card';appendText(card,'h3',sourceName(result.source));appendText(card,'p',(result.source.device.config?.mode==='simulation'?'SIMULATED':'REGISTERED DEVICE')+' · '+(result.source.channel.unit||'No unit')+' · '+chartInfo(result),'analytics-chart-meta');
-      if(result.error)appendText(card,'p',result.error,'widget-error-state');else{card.append(chart(result));const quality=document.createElement('div');quality.className='analytics-quality';appendText(quality,'span','Estimated valid samples: '+number(s.estimated));appendText(quality,'span','Long gaps: '+number(s.gaps));appendText(quality,'span','Estimated missing valid samples: '+number(s.missing));card.append(quality);appendText(card,'p','Gap estimates use '+settings.expected+' seconds between valid observations, only within the loaded first-to-last sample span.','form-help');if(s.first)appendText(card,'p','Loaded span: '+date(s.first)+' → '+date(s.last),'form-help');if(result.limited)appendText(card,'p','Partial history: showing '+s.records+' newest loaded records. Statistics and exports are limited to this subset.','analytics-limits');}
+      if(result.error)appendText(card,'p',result.error,'widget-error-state');else{card.append(chart(result));const quality=document.createElement('div');quality.className='analytics-quality';appendText(quality,'span','Estimated valid samples: '+number(s.estimated));appendText(quality,'span','Long gaps: '+number(s.gaps));appendText(quality,'span','Estimated missing valid samples: '+number(s.missing));card.append(quality);appendText(card,'p','Gap estimates use '+settings.expected+' seconds between valid observations, only within the loaded first-to-last sample span.','form-help');const delivery=readingDelivery(result.rows);
+      if(delivery)appendText(card,'p','Last recorded '+delivery.age+(result.source.device.config?.mode==='simulation'?' · simulation':delivery.recent?' · recent reading':' · stored history')+(delivery.delay?' · uploaded '+delivery.delay+' later':''),'form-help');
+      if(s.first)appendText(card,'p','Loaded span: '+date(s.first)+' → '+date(s.last),'form-help');if(result.limited)appendText(card,'p','Partial history: showing '+s.records+' newest loaded records. Statistics and exports are limited to this subset.','analytics-limits');}
       $('analytics-charts').append(card);
     }
     renderEvents(events);controls();

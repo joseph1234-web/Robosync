@@ -1,10 +1,10 @@
 import { animateWidget, sampleAdvanced } from './widget-motion.js?v=0.37.0';
 import { controlPurposeChoices } from './control-stream-model.js?v=0.37.0';
-import { createControlStatusSource } from './control-state.js?v=0.36.1';
+import { createControlStatusSource } from './control-state.js?v=3.0.0';
 import { safeDeviceHealth } from './specialized-model.js?v=0.36.1';
 import { behaviorRefs,applyBehavior,validateDashboardBehavior,dashboardTabs,panelParents } from './widget-behavior.js?v=0.36.1';
 import { mountBehaviorForm } from './widget-behavior-form.js?v=0.36.1';
-import { navigationBar,placePanelNodes } from './dashboard-navigation.js?v=0.36.1';
+import { navigationBar,placePanelNodes,editNavigation } from './dashboard-navigation.js?v=3.0.0';
 import { supportsValueText,textSizeChoices,widgetTextPlan,fitWidgetText,gaugeTextSize,decorateWidgetText,watchWidgetText } from './widget-text.js?v=0.36.1';
 import { renderWidgetScene } from './widget-visual.js?v=0.37.0';
 import { NUMERIC_WIDGETS,iconChoices,widgetSettingValues,applyWidgetSettings,widgetIconId,widgetNumber } from './widget-settings.js?v=0.37.0';
@@ -12,16 +12,16 @@ import { phoneLayout,phoneOrder } from './phone-layout.js?v=0.37.0';
 import { editPhoneLayout,mountPhoneLayoutEditor } from './dashboard-phone-editor.js?v=0.37.0';
 import { phonePreviewCard } from './phone-preview.js?v=0.37.0';
 import { streamMappingLabel } from './stream-mapping.js?v=0.36.1';
-import { widgetLibraryInventory,filterWidgetLibrary,WIDGET_LIBRARY_GROUPS,librarySeriesOrder } from './widget-library.js?v=0.37.0';
+import { widgetLibraryInventory,filterWidgetLibrary,WIDGET_LIBRARY_GROUPS,librarySeriesOrder,widgetSupportsStream,widgetLibraryPreview } from './widget-library.js?v=3.0.0';
 import { applyWidgetAppearance } from './widget-visual.js?v=0.37.0';
 import { protectedMedia } from './protected-media.js?v=0.36.1';
-import { CONTROL_TYPES, SPECIAL_TYPES, compatibleWidget, createCommandClient, renderOutputControl, phoneColumns } from './io-widgets.js?v=0.38.1';
+import { CONTROL_TYPES, SPECIAL_TYPES, compatibleWidget, createCommandClient, renderOutputControl, phoneColumns } from './io-widgets.js?v=3.0.0';
 import { renderSpecial } from './io-display.js?v=0.37.0';
 import { patchWidgetReadingTree,widgetSourceRevision } from './stable-widget-refresh.js?v=0.36.1';
 import { missingExperimentWidgets } from './experiment-model.js?v=0.36.1';
 import { pinSummary } from './stream-pins.js?v=0.36.1';
 import { WIDGET_DESIGN } from './widget-design.js?v=0.37.0';
-import { readingFreshness,sampleStatus } from './live-refresh.js?v=0.37.0';
+import { readingDelivery } from './reading-delivery.js?v=3.0.0';
 import { BUILTIN_BLUEPRINTS, instantiateBlueprint, captureSensorBlueprint, matchingGroupDevices } from './library-model.js?v=0.36.1';
 import { THEME_IDS, applySurfaceTheme } from './themes.js?v=0.36.1';
 import { createLayoutGestures, normalizeWidgetSize } from './layout-gestures.js?v=0.36.1';
@@ -41,6 +41,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   const unbound=['note','heading','divider','camera','panel'];let readBehavior=()=>({}),behaviorFormKey='';
   const typeLabels=WIDGET_DESIGN.labels;
   const accepts=(type,ch)=>compatibleWidget(type,ch,devices.find(d=>d.id===ch.device_id));
+  const selectable=(type,ch)=>widgetSupportsStream(type,ch,devices.find(d=>d.id===ch.device_id));
   const widthColumns={quarter:3,third:4,'5':5,half:6,'7':7,'two-thirds':8,'three-quarters':9,'10':10,'11':11,full:12};
   const stats=['latest','mean','min','max'];
   const maxWidgets=24;
@@ -56,9 +57,9 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   const phoneScale=()=>Number($('dashboard-phone-scale').value)===1.5?1.5:1;
   const phoneConfig=()=>({kind:'dashboard_layout',schema_version:3,...layoutExtras,widgets,theme:dashboardTheme});
   const widgetRoots=new Map();
-  let layoutExtras={},savedExtras={};const disposers=new Map();const dispose=id=>{for(const f of disposers.get(id)||[])f();disposers.delete(id);};const controlClient=createCommandClient({rpc:(name,body)=>request('/rest/v1/rpc/'+name,{method:'POST',authenticated:true,body}),canUse:()=>active&&!!getSession()&&navigator.onLine!==false});
+  let layoutExtras={},savedExtras={};const disposers=new Map();const dispose=id=>{for(const f of disposers.get(id)||[])f();disposers.delete(id);};const controlClient=createCommandClient({rpc:(name,body,options)=>request('/rest/v1/rpc/'+name,{...options,method:'POST',authenticated:true,body}),canUse:()=>active&&!!getSession()&&navigator.onLine!==false});
   let active=false,autoTimer=null,autoVersion=0,refreshing=false,syncTimer=null,syncVersion=0;
-  const controlStatus=createControlStatusSource({generation:getGeneration,load:id=>request('/rest/v1/rpc/rs_io_device_status',{method:'POST',authenticated:true,body:{p_device:id}})});
+  const controlStatus=createControlStatusSource({generation:getGeneration,load:id=>request('/rest/v1/rpc/rs_io_device_status',{method:'POST',authenticated:true,body:{p_device:id},timeoutMs:4500})});
   const layoutSignature=(items=widgets,theme=dashboardTheme,extras=layoutExtras)=>signature({widgets:items,theme,extras});
   const media=createMediaWidgets({canUse:()=>active&&!!project&&!!getSession()});
   const gestures=createLayoutGestures({canvas:$('dashboard-canvas'),canEdit:()=>active&&editing&&!phonePreview()&&!saving&&loaded&&!loadFailed,onAdd:(type,index)=>newWidget(type,index),onMove:move,onResize:resizeWidget,onCancel:render,onAnnounce:text=>{$('dashboard-layout-status').textContent=text;}});
@@ -123,7 +124,12 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   }
   function updateViewerOptions(){
     if(!project)return;libraryOptions('dashboard-viewer-group',(getLibrary().groups||[]).filter(g=>!g.archived),g=>g.name,'All project devices');libraryOptions('dashboard-viewer-device',matchingViewerDevices(),d=>d.label,'All matching devices');
-    const sections=[...new Set(widgets.map(w=>w.tab).filter(Boolean))],select=$('dashboard-viewer-section'),key=JSON.stringify(sections);if(select.dataset.sections!==key){libraryOptions('dashboard-viewer-section',sections.map(id=>({id})),s=>s.id,'All sections');select.dataset.sections=key;}select.disabled=editing||saving;
+    const sections=dashboardTabs(phoneConfig()),select=$('dashboard-viewer-section'),key=JSON.stringify(sections);
+    if(select.dataset.sections!==key){
+      libraryOptions('dashboard-viewer-section',sections.map(section=>({id:section.key,label:section.label})),section=>section.label,'All sections');
+      select.dataset.sections=key;
+    }
+    select.disabled=editing||saving;
     $('dashboard-viewer-group').disabled=editing||saving;$('dashboard-viewer-device').disabled=editing||saving;$('dashboard-project-scope').textContent=project.name;
   }
   function visibleWidgets(){
@@ -177,7 +183,19 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   function render(){
     renderLibrary();
     if(gestures.isActive()||phoneGestures.isActive()){syncControls();return;}
-    updateViewerOptions();let tabbar=document.getElementById('dashboard-real-tabs');if(!tabbar){tabbar=document.createElement('div');tabbar.id='dashboard-real-tabs';$('dashboard-canvas-viewport').parentElement.insertBefore(tabbar,$('dashboard-canvas-viewport'));}tabbar.replaceChildren(navigationBar(phoneConfig(),$('dashboard-viewer-section').value,key=>{$('dashboard-viewer-section').value=key;render();refreshData();}));
+    updateViewerOptions();
+    const select=$('dashboard-viewer-section'),tabbar=$('dashboard-real-tabs');
+    if(tabbar.dataset.sections!==select.dataset.sections){
+      tabbar.replaceChildren(navigationBar(phoneConfig(),select.value,key=>{
+        select.value=key;render();refreshData();
+      }));
+      tabbar.dataset.sections=select.dataset.sections;
+    }
+    tabbar.hidden=editing||select.options.length<2;
+    for(const button of tabbar.querySelectorAll('[data-section]')){
+      const selected=button.dataset.section===select.value;
+      button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;
+    }
     const preview=phonePreview(),canvas=$('dashboard-canvas'),shown=visibleWidgets(),visible=new Set(shown.map(w=>w.id)),ordered=[],placements=new Map(preview?phoneLayout(phoneConfig(),phoneWidth(),phoneScale(),{visibleIds:visible,showHidden:editing}).map(p=>[p.id,p]):[]);
     canvas.classList.toggle('phone-layout-canvas',preview);$('dashboard-canvas-viewport').classList.toggle('phone-preview-viewport',preview);show('dashboard-phone-controls',preview);
     show('dashboard-phone-editor',preview&&editing);if(preview&&editing)mountPhoneLayoutEditor($('dashboard-phone-editor'),phoneConfig(),{disabled:saving,onChange:changePhone,onEdit:w=>editWidget(w.id)});
@@ -258,7 +276,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     plot.append(svg('text',{x:40,y:177,class:'chart-time'},label(first)));plot.append(svg('text',{x:502,y:177,'text-anchor':'end',class:'chart-time'},label(last)));return plot;
   }
   function renderWidget(w,index){
-    const card=document.createElement('article');card.className='dashboard-widget'+(w.width==='full'?' full-width':'')+(editing?' editable':'');card.setAttribute('data-widget-id',w.id);applySurfaceTheme(card,w.theme);
+    const card=document.createElement('article');card.className='dashboard-widget'+(w.width==='full'?' full-width':'')+(editing?' editable':'');card.setAttribute('data-widget-id',w.id);card.dataset.widgetKind=w.type;applySurfaceTheme(card,w.theme);
     const dimensions=w.size||{columns:w.width==='full'?12:6,height:0};card.style.setProperty('--widget-cols',String(dimensions.columns));if(dimensions.height){card.style.setProperty('--widget-height',dimensions.height+'px');card.classList.toggle('sized-widget',true);}
     card.style.setProperty('--phone-cols',String(phoneColumns(w,window.innerWidth||390,1,layoutExtras.custom_phone_layout===true)));applyWidgetAppearance(card,w,dashboardTheme==='site'?websiteColors():dashboardTheme);if(w.design?.align&&['left','center','right'].includes(w.design.align))card.style.textAlign=w.design.align;const head=document.createElement('div');head.className='dashboard-widget-heading';const title=document.createElement('h3');const defaultControlTitle=(w.type==='switch'&&w.title==='Button / switch · On/Off')||(w.type==='rgb'&&w.title==='RGB color');title.textContent=defaultControlTitle?(bind(w)?.channel.title||w.title):w.title;decorateWidgetText(title,w,'title');const tag=document.createElement('span');tag.className='widget-type-tag';tag.textContent=typeLabels[w.type];head.append(title,widgetIcon(widgetIconId(w)),tag);
     const vpin=bind(w)?.channel.config?.virtual_pin;
@@ -276,17 +294,16 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
       const binding=bind(w),data=datasets.get(w.channel_id),valid=validStreamReadings(data?.rows||[],binding?.channel.value_type||'number'),summary=binding?.channel.value_type==='number'?summarize(data):null;
       if(binding?.device.config?.mode==='hardware'&&binding.channel.direction==='input'){
         const now=Date.now();
-        for(let n=valid.length-1;n>=0;n--){const stamp=Date.parse(valid[n].recorded_at);if(stamp<=now+2000){card.setAttribute('data-recorded-ms',String(stamp));break;}}
+        for(let n=valid.length-1;n>=0;n--){const stamp=Date.parse(valid[n].recorded_at);if(stamp<=now+2000){if(valid[n].quality!=='estimated'&&now-stamp<=20000)card.setAttribute('data-recorded-ms',String(stamp));break;}}
       }
       if(!binding){const p=document.createElement('p');p.className='widget-error-state';p.textContent='Stream unavailable. Check its binding in Edit.';card.append(p);}
-      else if(CONTROL_TYPES.includes(w.type)){if(!editing)card.append(renderOutputControl(w,{...binding,channels,readings:id=>datasets.get(id)?.rows||[],request,isOwner:()=>!!getSession(),statusSource:controlStatus,canUse:()=>!!getSession()&&navigator.onLine!==false,active:()=>active,client:controlClient,onDispose:f=>{if(!disposers.has(w.id))disposers.set(w.id,[]);disposers.get(w.id).push(f);}}));else{const p=document.createElement('p');p.textContent='Output controls are disabled while editing.';card.append(p);}}
+      else if(CONTROL_TYPES.includes(w.type)){if(!editing)card.append(renderOutputControl(w,{...binding,channels,readings:id=>datasets.get(id)?.rows||[],request,isOwner:()=>!!getSession(),statusSource:controlStatus,canUse:()=>!!getSession()&&navigator.onLine!==false,active:()=>active,client:controlClient,onDispose:f=>{if(!disposers.has(w.id))disposers.set(w.id,[]);disposers.get(w.id).push(f);}}));else{const p=document.createElement('p');p.textContent='Control preview';card.append(p);}}
       else if(SPECIAL_TYPES.includes(w.type))card.append(renderSpecial(w,binding.channel,data,(w.series||[]).map(id=>({channel:channels.find(c=>c.id===id),rows:datasets.get(id)?.rows})).filter(s=>s.channel)));
       else if(data?.error&&!valid.length){const p=document.createElement('p');p.className='widget-error-state';p.textContent=data.error;card.append(p);}
       else if(!valid.length){const p=document.createElement('p');p.className='widget-no-data';p.textContent=data?(binding.device.config?.mode==='simulation'?'No simulated readings in this time range.':'No sensor readings in this time range.'):'Loading saved readings…';card.append(p);}
       else if(w.type==='value'){
         const value=document.createElement('div');value.className='widget-reading';value.textContent=number(summary[w.aggregation],binding.channel,w);const unit=document.createElement('small');unit.textContent=binding.channel.unit;if(widgetTextPlan(w).enabled){unit.style.display=widgetTextPlan(w).unitPlacement==='below'?'block':'inline';unit.style.fontSize='15px';unit.style.marginLeft=widgetTextPlan(w).unitPlacement==='below'?'0':'4px';}value.append(unit);decorateWidgetText(value,w,'value',(window.innerWidth||390)>720&&dimensions.columns===12?42:38);card.append(value);
-        const label=document.createElement('p');label.className='widget-stat-label';label.textContent={latest:'Latest',mean:'Sample average',min:'Minimum',max:'Maximum'}[w.aggregation];card.append(label);
-        const updated=document.createElement('p');updated.className='widget-data-updated';updated.textContent=`${summary.valid.length} valid samples · Latest recorded ${time(summary.valid.at(-1).recorded_at)}`;card.append(updated);
+        const label=document.createElement('p');label.className='widget-stat-label';label.textContent={latest:'Latest',mean:'Sample average',min:'Minimum',max:'Maximum'}[w.aggregation];if(w.aggregation!=='latest')card.append(label);
       }else if(w.type==='gauge'){
         card.append(makeGauge(w,summary.latest,binding.channel.unit,binding.channel));
         if(summary.latest<w.min||summary.latest>w.max){const p=document.createElement('p');p.className='widget-out-of-range';p.textContent='Reading is outside the configured gauge range.';card.append(p);}
@@ -307,8 +324,19 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
         for(const text of ['Recorded','Value','Quality']){const th=document.createElement('th');th.textContent=text;th.scope='col';tr.append(th);}thead.append(tr);table.append(thead);const tbody=document.createElement('tbody');
         for(const row of valid.slice(-10).reverse()){const line=document.createElement('tr'),type=binding.channel.value_type,value=streamValue(row,type);for(const text of [time(row.recorded_at),type==='boolean'?(value?'On':'Off'):type==='number'?number(value,binding.channel,w)+(binding.channel.unit?' '+binding.channel.unit:''):String(value).slice(0,2000),row.quality]){const cell=document.createElement('td');cell.textContent=text;line.append(cell);}tbody.append(line);}table.append(tbody);const wrap=document.createElement('div');wrap.className='widget-table-scroll';wrap.append(table);card.append(wrap);
       }
-      if(binding&&valid.length&&['text','status','led','progress','gauge','chart','table'].includes(w.type)){const p=document.createElement('p');p.className='widget-data-updated';p.textContent='Saved data · Latest recorded '+time(valid.at(-1).recorded_at)+' · '+valid.at(-1).quality;card.append(p);}
-      if(binding){const footer=document.createElement('div');footer.className='widget-binding';const label=document.createElement('span');label.textContent=binding.device.label+' / '+binding.channel.title+(pinSummary(binding.channel)?' · '+pinSummary(binding.channel):'');footer.append(label);if(binding.device.config?.mode==='simulation'){const badge=document.createElement('span');badge.className='sim-badge';badge.textContent='SIMULATED';footer.append(badge);}card.append(footer);}
+      if(binding&&valid.length&&binding.channel.direction==='input'){
+        const delivery=readingDelivery(valid),last=valid.at(-1),line=document.createElement('p');
+        line.className='widget-data-updated';
+        if(delivery){
+          line.dataset.freshness=binding.device.config?.mode==='simulation'?'simulation':delivery.recent?'recent':'stored';
+          line.textContent=binding.device.config?.mode==='simulation'
+            ?'Simulated · '+time(delivery.at)
+            :['Recorded '+time(delivery.at),last.quality==='estimated'?'Estimated time':delivery.recent?'Recent':'Stored history',delivery.delay?'Uploaded '+delivery.delay+' later':''].filter(Boolean).join(' · ');
+          card.append(line);
+        }
+      }
+      if(binding){const footer=document.createElement('div');footer.className='widget-binding';const label=document.createElement('span');const pin=pinSummary(binding.channel),shortPin=pin.split(' · ').find(part=>part.includes('wiring plan'))?.replace(' wiring plan','');
+        label.textContent=editing?[binding.device.label,binding.channel.title,pin].filter(Boolean).join(' · '):[binding.device.label,shortPin].filter(Boolean).join(' · ');footer.append(label);if(binding.device.config?.mode==='simulation'){const badge=document.createElement('span');badge.className='sim-badge';badge.textContent='SIMULATED';footer.append(badge);}card.append(footer);}
     }
     if(editing){
       const tools=document.createElement('div');tools.className='widget-tools';
@@ -356,7 +384,8 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   async function refreshData(){
     if(!project||!getSession())return;const ctx=context(),requestVersion=++dataVersion;
     const reportWidgets=phonePreview()?[]:visibleWidgets().filter(w=>['health','alarm'].includes(w.type)&&w.behavior?.version===1&&['device','events'].includes(w.behavior.variant));
-    const needed=phonePreview()?[]:[...new Set(visibleWidgets().filter(w=>!unbound.includes(w.type)&&bind(w)).flatMap(behaviorRefs))];
+    const inputs=new Set(channels.filter(channel=>channel.direction==='input').map(channel=>channel.id));
+    const needed=phonePreview()?[]:[...new Set(visibleWidgets().filter(w=>!unbound.includes(w.type)&&bind(w)).flatMap(behaviorRefs))].filter(id=>inputs.has(id));
     refreshing=true;$('dashboard-refresh').disabled=true;
     const hours=Number($('dashboard-range').value)||24,since=new Date(Date.now()-hours*3600000).toISOString();
     const result=await Promise.allSettled(needed.map(async id=>{
@@ -374,13 +403,12 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
       const ch=channels.find(c=>c.id===id),d=ch&&devices.find(device=>device.id===ch.device_id);
       return ch?.direction==='input'&&d?.config?.mode==='hardware';
     });
-    const freshness=readingFreshness(hardwareIds.flatMap(id=>{
-      const type=channels.find(c=>c.id===id).value_type;
-      return validStreamReadings(datasets.get(id)?.rows||[],type);
-    }));
+    const delivery=readingDelivery(hardwareIds.flatMap(id=>datasets.get(id)?.rows||[]));
     const failed=needed.some(id=>datasets.get(id)?.error);
-    const label=phonePreview()?'Phone preview · example data':hardwareIds.length?sampleStatus(freshness):needed.length?'Saved dashboard':'';
-    $('dashboard-data-state').setAttribute('data-age',failed||hardwareIds.length&&!freshness.live&&!phonePreview()?'waiting':'normal');
+    const label=phonePreview()?'Example phone layout':hardwareIds.length
+      ?delivery?'Latest recorded '+delivery.age:'No sensor readings in this range'
+      :needed.length?'Saved dashboard':'';
+    $('dashboard-data-state').setAttribute('data-age',failed||hardwareIds.length&&!delivery?.recent&&!phonePreview()?'waiting':'normal');
     $('dashboard-data-state').textContent=[label,failed?'Refresh failed':!$('dashboard-auto-refresh').checked?'Auto refresh paused':''].filter(Boolean).join(' · ');
     render();
   }
@@ -396,14 +424,20 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
       if(cycle===syncVersion)queueLayoutSync();
     },5000);
   }
-  function startEditing(){if(!loaded||loadFailed||saving)return;$('dashboard-viewer-group').value='';$('dashboard-viewer-device').value='';editing=true;message('dashboard-notice','');render();}
+  function startEditing(){if(!loaded||loadFailed||saving)return;controlClient.stop();$('dashboard-viewer-group').value='';$('dashboard-viewer-device').value='';editing=true;message('dashboard-notice','');render();}
+  function sectionOptions(value){
+    const select=$('widget-section');
+    select.replaceChildren(new Option('All', ''));
+    for(const section of dashboardTabs(phoneConfig()))select.append(new Option(section.label,section.key));
+    select.value=value||'';
+  }
   function sourceOptions(preferredDevice,preferredChannel){
     $('widget-device').replaceChildren();for(const d of devices){const option=document.createElement('option');option.value=d.id;option.textContent=d.label;$('widget-device').append(option);}
-    $('widget-device').value=devices.some(d=>d.id===preferredDevice)?preferredDevice:devices.find(d=>channels.some(c=>c.device_id===d.id&&accepts($('widget-type').value,c)))?.id||devices[0]?.id||'';
+    $('widget-device').value=devices.some(d=>d.id===preferredDevice)?preferredDevice:devices.find(d=>channels.some(c=>c.device_id===d.id&&selectable($('widget-type').value,c)))?.id||devices[0]?.id||'';
     streamOptions(preferredChannel);
   }
   function streamOptions(preferred){
-    const available=channels.filter(c=>c.device_id===$('widget-device').value&&accepts($('widget-type').value,c));$('widget-channel').replaceChildren();
+    const available=channels.filter(c=>c.device_id===$('widget-device').value&&selectable($('widget-type').value,c));$('widget-channel').replaceChildren();
     for(const ch of available){const option=document.createElement('option');option.value=ch.id;option.textContent=streamMappingLabel(ch,devices);$('widget-channel').append(option);}
     $('widget-channel').value=available.some(c=>c.id===preferred)?preferred:available[0]?.id||'';
     $('widget-channel').disabled=!available.length;
@@ -420,9 +454,9 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   }
   function editWidget(id){
     if(!editing||saving)return;const w=widgets.find(row=>row.id===id);if(!w)return;editId=id;
-    $('widget-form').reset();$('widget-dialog-title').textContent='Edit your widget.';$('widget-apply').textContent='Apply changes ↗';$('widget-theme').value=w.theme||'inherit';$('widget-type-search').value='';$('widget-type-category').value='All';typeOptions(w.type);$('widget-type').value=w.type;$('widget-width').value=Object.keys(widthColumns).find(key=>widthColumns[key]===(w.size?.columns||(w.width==='full'?12:6)))||w.width;$('widget-height').value=String(w.size?.height||0);$('widget-title').value=w.title;$('widget-note').value=w.note||'';$('widget-aggregation').value=w.aggregation||'latest';
+    $('widget-form').reset();$('widget-dialog-title').textContent='Edit widget';$('widget-apply').textContent='Apply changes';$('widget-theme').value=w.theme||'inherit';$('widget-type-search').value='';$('widget-type-category').value='All';typeOptions(w.type);$('widget-type').value=w.type;$('widget-width').value=Object.keys(widthColumns).find(key=>widthColumns[key]===(w.size?.columns||(w.width==='full'?12:6)))||w.width;$('widget-height').value=String(w.size?.height||0);$('widget-title').value=w.title;$('widget-note').value=w.note||'';$('widget-aggregation').value=w.aggregation||'latest';
     $('widget-on-label').value=w.on_label||'On';$('widget-off-label').value=w.off_label||'Off';$('widget-camera-mode').value=w.mode||'webcam';$('widget-camera-facing').value=w.facing||'environment';$('widget-camera-url').value=w.url||'';
-    settingsFields(w);sourceOptions(w.device_id,w.channel_id);seriesOptions(w.series||[]);if(['gauge','progress','tank'].includes(w.type)){$('widget-min').value=String(w.min);$('widget-max').value=String(w.max);}formFields();message('widget-error','');$('widget-dialog').showModal();$('widget-title').focus();
+    sectionOptions(w.tab);settingsFields(w);sourceOptions(w.device_id,w.channel_id);seriesOptions(w.series||[]);if(['gauge','progress','tank'].includes(w.type)){$('widget-min').value=String(w.min);$('widget-max').value=String(w.max);}formFields();message('widget-error','');$('widget-dialog').showModal();$('widget-title').focus();
   }
   for(const id of ['widget-icon','widget-precision','widget-zeros','widget-aggregation','widget-on-label','widget-off-label','widget-title','widget-theme','widget-min','widget-max',...['title_size','value_size','title_align','value_align','auto_fit','unit_placement'].map(k=>'widget-'+k.replaceAll('_','-'))]){$(id).addEventListener('input',settingsPreview);$(id).addEventListener('change',settingsPreview);}
   function textFormValues(){return Object.fromEntries(['title_size','value_size','title_align','value_align','auto_fit','unit_placement'].map(k=>[k,$('widget-'+k.replaceAll('_','-')).value]));}
@@ -431,13 +465,13 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   function newWidget(type='value',position=null){
     const fromPalette=typeof type==='string'&&types.includes(type);if(!fromPalette)type='value';insertAt=Number.isInteger(position)?position:null;
     if(!loaded||loadFailed||saving)return;if(widgets.length>=maxWidgets){message('dashboard-error','This dashboard can hold up to 24 widgets.');return;}
-    if(!editing)startEditing();editId=null;const item=inventory().find(i=>i.type===type);if(fromPalette&&!item?.enabled){if(canCreateControl(type)){addControlStream(type).catch(e=>message('dashboard-error',e.message));return;}message('dashboard-notice',item?.reason||'This widget is unavailable.');return;}if(!item?.enabled)type=inventory().find(i=>i.enabled)?.type||'note';$('widget-form').reset();$('widget-type-search').value='';$('widget-type-category').value='All';typeOptions(type);$('widget-dialog-title').textContent='Add a widget.';$('widget-apply').textContent='Add to dashboard ↗';$('widget-theme').value='inherit';$('widget-type').value=type;$('widget-width').value=['panel','chart','table','heading','divider','camera','multi','bar','timeline','heatmap','vector','gps'].includes(type)?'full':'half';$('widget-height').value='0';$('widget-title').value=fromPalette?(inventory().find(i=>i.type===type)?.label||type):'';$('widget-note').value='';$('widget-aggregation').value='latest';$('widget-on-label').value='On';$('widget-off-label').value='Off';$('widget-camera-mode').value='webcam';$('widget-camera-facing').value='environment';$('widget-camera-url').value='';settingsFields({type});sourceOptions();seriesOptions([]);formFields();message('widget-error','');$('widget-dialog').showModal();$('widget-title').focus();
+    if(!editing)startEditing();editId=null;const item=inventory().find(i=>i.type===type);if(fromPalette&&!item?.enabled){if(canCreateControl(type)){addControlStream(type).catch(e=>message('dashboard-error',e.message));return;}message('dashboard-notice',item?.reason||'This widget is unavailable.');return;}if(!item?.enabled)type=inventory().find(i=>i.enabled)?.type||'note';$('widget-form').reset();$('widget-type-search').value='';$('widget-type-category').value='All';typeOptions(type);$('widget-dialog-title').textContent='Add widget';$('widget-apply').textContent='Add to dashboard';$('widget-theme').value='inherit';$('widget-type').value=type;$('widget-width').value=['panel','chart','table','heading','divider','camera','multi','bar','timeline','heatmap','vector','gps'].includes(type)?'full':'half';$('widget-height').value='0';$('widget-title').value=fromPalette?(inventory().find(i=>i.type===type)?.label||type):'';$('widget-note').value='';$('widget-aggregation').value='latest';$('widget-on-label').value='On';$('widget-off-label').value='Off';$('widget-camera-mode').value='webcam';$('widget-camera-facing').value='environment';$('widget-camera-url').value='';sectionOptions($('dashboard-viewer-section').value);settingsFields({type});sourceOptions();seriesOptions([]);formFields();message('widget-error','');$('widget-dialog').showModal();$('widget-title').focus();
   }
   async function applyWidget(event){
     event.preventDefault();if(!editing||saving)return;
     const type=$('widget-type').value,title=$('widget-title').value.trim(),width=$('widget-width').value==='full'?'full':'half';
     if(!types.includes(type)||!title||title.length>120){message('widget-error','Choose a widget type and a title of 1–120 characters.');return;}
-    const original=widgets.find(w=>w.id===editId),choice=inventory().find(i=>i.type===type);if(!choice?.enabled&&original?.type!==type){message('widget-error',choice?.reason||'This widget is unavailable.');return;}let next={...clone(original||{}),id:editId||crypto.randomUUID(),type,title,width,theme:$('widget-theme').value,size:{...clone(original?.size||{}),columns:widthColumns[$('widget-width').value]||6,height:$('widget-height').value.trim()===''?0:Number($('widget-height').value)}};
+    const original=widgets.find(w=>w.id===editId),choice=inventory().find(i=>i.type===type);if(!choice?.enabled&&original?.type!==type){message('widget-error',choice?.reason||'This widget is unavailable.');return;}let next={...clone(original||{}),id:editId||crypto.randomUUID(),type,title,width,tab:$('widget-section').value,theme:$('widget-theme').value,size:{...clone(original?.size||{}),columns:widthColumns[$('widget-width').value]||6,height:$('widget-height').value.trim()===''?0:Number($('widget-height').value)}};
     if(unbound.includes(type)&&!(type==='camera'&&next.mode==='protected')){for(const k of ['device_id','channel_id','media_id','series'])delete next[k];}
     if(type==='note'){const note=$('widget-note').value.trim();if(!note||note.length>1000){message('widget-error','Write a note of 1–1,000 characters.');return;}next.note=note;}
     else if(type==='camera'){next.mode=$('widget-camera-mode').value;if(next.mode==='protected'){const c=channels.find(c=>c.id===$('widget-channel').value&&c.device_id===$('widget-device').value&&accepts('camera',c));if(!c){message('widget-error','Choose a compatible owned media stream.');return;}next.device_id=c.device_id;next.channel_id=c.id;next.media_id=c.config.io.media_id;delete next.url;delete next.facing;}else{next.facing=$('widget-camera-facing').value;next.url=$('widget-camera-url').value;for(const k of ['device_id','channel_id','media_id','series'])delete next[k];}}
@@ -497,7 +531,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   }
   function seriesOptions(selected=[]){const select=$('widget-series');select.replaceChildren();const available=channels.filter(c=>c.direction==='input'&&c.value_type==='number');for(const c of available){const option=document.createElement('option');option.value=c.id;option.textContent=streamMappingLabel(c,devices);option.selected=selected.includes(c.id);select.append(option);}for(const id of selected)if(!available.some(c=>c.id===id)){const option=document.createElement('option');option.value=id;option.textContent='Unavailable saved stream · retained';option.selected=true;select.append(option);}}
   function renderLibrary(){
-    const all=inventory(),signatureNow=signature([all.map(i=>[i.type,i.enabled,i.reason,i.sources.map(c=>c.id)]),project?.id,libraryCategory,$('widget-library-search').value,loaded,loadFailed,saving,widgets.length>=maxWidgets]);if(signatureNow===librarySignature)return;librarySignature=signatureNow;$('widget-palette').replaceChildren();$('widget-library-categories').replaceChildren();for(const category of WIDGET_LIBRARY_GROUPS){const button=document.createElement('button');button.type='button';button.textContent=category;button.setAttribute('aria-pressed',String(libraryCategory===category));button.addEventListener('click',()=>{libraryCategory=category;renderLibrary();});$('widget-library-categories').append(button);}const found=filterWidgetLibrary(all,libraryCategory,$('widget-library-search').value);for(const item of found){const button=document.createElement('button');button.type='button';button.className='palette-widget';button.setAttribute('data-palette-type',item.type);button.disabled=(!item.enabled&&!canCreateControl(item.type))||!loaded||loadFailed||saving||widgets.length>=maxWidgets;button.setAttribute('aria-label',(item.enabled?'Add ':canCreateControl(item.type)?'Set up ':'Unavailable ')+item.label+'. '+item.reason);button.title=item.reason;const icon=widgetIcon(item.type),label=document.createElement('span'),hint=document.createElement('small');label.textContent=item.label;hint.textContent=item.reason+(!item.enabled&&canCreateControl(item.type)?' Tap to set up its output.':'');button.append(icon,label,hint);button.addEventListener('pointerdown',event=>{if(!button.disabled&&item.enabled)gestures.beginAdd(event,item.type,item.label);});button.addEventListener('click',()=>{if(!button.disabled&&!gestures.consumeClick())newWidget(item.type);});$('widget-palette').append(button);}$('widget-library-count').textContent=found.length+' of '+all.length+' defined widget types · '+found.filter(i=>i.enabled).length+' ready to add · '+found.filter(i=>!i.enabled&&canCreateControl(i.type)).length+' need stream setup.';show('widget-library-empty',!found.length);
+    const all=inventory(),signatureNow=signature([all.map(i=>[i.type,i.enabled,i.reason,i.sources.map(c=>c.id)]),project?.id,libraryCategory,$('widget-library-search').value,loaded,loadFailed,saving,widgets.length>=maxWidgets]);if(signatureNow===librarySignature)return;librarySignature=signatureNow;$('widget-palette').replaceChildren();$('widget-library-categories').replaceChildren();for(const category of WIDGET_LIBRARY_GROUPS){const button=document.createElement('button');button.type='button';button.textContent=category;button.setAttribute('aria-pressed',String(libraryCategory===category));button.addEventListener('click',()=>{libraryCategory=category;renderLibrary();});$('widget-library-categories').append(button);}const found=filterWidgetLibrary(all,libraryCategory,$('widget-library-search').value);for(const item of found){const button=document.createElement('button');button.type='button';button.className='palette-widget';button.setAttribute('data-palette-type',item.type);button.disabled=(!item.enabled&&!canCreateControl(item.type))||!loaded||loadFailed||saving||widgets.length>=maxWidgets;button.setAttribute('aria-label',(item.enabled?'Add ':canCreateControl(item.type)?'Set up ':'Unavailable ')+item.label+'. '+item.reason);button.title=item.reason;const icon=widgetLibraryPreview(item),label=document.createElement('span'),hint=document.createElement('small');label.textContent=item.label;hint.textContent=item.reason+(!item.enabled&&canCreateControl(item.type)?' Tap to set up its output.':'');button.append(icon,label,hint);button.addEventListener('pointerdown',event=>{if(!button.disabled&&item.enabled)gestures.beginAdd(event,item.type,item.label);});button.addEventListener('click',()=>{if(!button.disabled&&!gestures.consumeClick())newWidget(item.type);});$('widget-palette').append(button);}$('widget-library-count').textContent=found.length+' widgets · '+found.filter(i=>i.enabled).length+' available';show('widget-library-empty',!found.length);
   }
   $('widget-library-search').addEventListener('input',renderLibrary);$('widget-type-search').addEventListener('input',()=>typeOptions());$('widget-type-category').addEventListener('change',()=>typeOptions());
   $('dashboard-blueprint-add').addEventListener('click',openBlueprint);$('blueprint-select').addEventListener('change',blueprintFields);$('blueprint-device').addEventListener('change',blueprintFields);$('blueprint-channel').addEventListener('change',blueprintPreview);$('blueprint-apply').addEventListener('click',applyBlueprint);$('dashboard-blueprint-capture').addEventListener('click',openBlueprintCapture);$('blueprint-capture-form').addEventListener('submit',captureBlueprint);
@@ -507,6 +541,13 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   $('dashboard-phone-preview').addEventListener('click',()=>{const on=!phonePreview();gestures.cancel();phoneGestures.cancel();media.stopAll();controlClient.stop();$('dashboard-phone-preview').setAttribute('aria-pressed',String(on));render();return refreshData();});
   for(const id of ['dashboard-phone-width','dashboard-phone-scale'])$(id).addEventListener('change',render);
   $('dashboard-phone-studio').addEventListener('click',event=>{event.preventDefault();openPhoneEditor();});
+  $('dashboard-sections').addEventListener('click',()=>{
+    if(!editing||saving)return;
+    editNavigation(phoneConfig(),next=>{
+      const {widgets:nextWidgets,theme,kind,...extras}=next;
+      commit(nextWidgets,dashboardTheme,extras);
+    });
+  });
   $('dashboard-edit').addEventListener('click',startEditing);$('dashboard-add').addEventListener('click',newWidget);$('dashboard-first-widget').addEventListener('click',newWidget);
   $('widget-form').addEventListener('submit',applyWidget);$('widget-type').addEventListener('change',()=>{if(['panel','chart','table','heading','divider','camera','multi','bar','timeline','heatmap','vector','gps'].includes($('widget-type').value))$('widget-width').value='full';sourceOptions();seriesOptions([]);formFields();});
   $('widget-camera-mode').addEventListener('change',()=>{sourceOptions();seriesOptions([]);formFields();});$('dashboard-auto-refresh').addEventListener('change',()=>{autoPreferred=$('dashboard-auto-refresh').checked;$('dashboard-data-state').textContent=autoPreferred?'Automatic refresh enabled · next check in 5s':'Automatic refresh paused · use Refresh data';queueAuto();});$('dashboard-theme').addEventListener('change',()=>{if(saving||!loaded||loadFailed)return;const next=$('dashboard-theme').value;if(!['site',...THEME_IDS].includes(next))return;if(!editing)startEditing();commit(clone(widgets),next==='site'?websiteColors():next);});
@@ -516,8 +557,12 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   $('dashboard-save').addEventListener('click',save);$('dashboard-discard').addEventListener('click',discard);
   $('dashboard-undo').addEventListener('click',()=>{if(!history.length||saving)return;const prior=history.pop();widgets=prior.widgets;dashboardTheme=prior.theme;layoutExtras=clone(prior.extras||savedExtras);dirty=layoutSignature()!==layoutSignature(savedWidgets,savedTheme,savedExtras);render();});
   $('dashboard-refresh').addEventListener('click',refreshData);
+  addEventListener('online',()=>{if(active){refreshData();queueAuto();}});
   $('dashboard-range').addEventListener('change',()=>{datasets=new Map();render();return refreshData();});
   $('dashboard-reload').addEventListener('click',async()=>{if(dirty||saving||!project)return;message('dashboard-error','');await loadLayout();await refreshData();});
   addEventListener('beforeunload',event=>{if(dirty||saving){event.preventDefault();event.returnValue='';}});
-  return {openPhoneEditor,open,reset,deactivate,refreshData,stageExperiment,isActive:()=>active,hasPendingChanges:()=>dirty||saving,warnBeforeLeave,libraryChanged:()=>{if(project){render();if(active)return refreshData();}},blocksClose:id=>['widget-dialog','blueprint-dialog','blueprint-capture-dialog'].includes(id)&&saving};
+  return {openPhoneEditor,editEmpty(){
+    if(!active||!loaded||loadFailed||saving||widgets.length)return false;
+    startEditing();return true;
+  },open,reset,deactivate,refreshData,stageExperiment,isActive:()=>active,hasPendingChanges:()=>dirty||saving,warnBeforeLeave,libraryChanged:()=>{if(project){render();if(active)return refreshData();}},blocksClose:id=>['widget-dialog','blueprint-dialog','blueprint-capture-dialog'].includes(id)&&saving};
 }

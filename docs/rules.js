@@ -5,6 +5,8 @@ export function createRules({request,friendlyError,getSession,getGeneration,onVi
   const message=(id,text)=>{$(id).textContent=text;show(id,!!text);};
   const select='id,project_id,name,enabled,config,revision';
   let project=null,devices=[],channels=[],rules=[],version=0,listVersion=0,previewVersion=0;
+  let editorStep=0;
+  const steps=[...document.querySelectorAll('[data-rule-step]')];
   let saving=false,toggling=false,savingEvents=false,loading=false,editId=null,editRevision=0,pendingSave=null,preview=null;
   const context=()=>({version,generation:getGeneration(),projectId:project?.id});
   const current=ctx=>project&&getSession()&&ctx.version===version&&ctx.generation===getGeneration()&&ctx.projectId===project.id;
@@ -35,7 +37,7 @@ export function createRules({request,friendlyError,getSession,getGeneration,onVi
     $('rules-setup-check').textContent='6';$('rules-setup-check').classList.toggle('pending',true);$('rules-setup-text').textContent='Create a rule, preview saved readings, and choose whether to save test events.';
   }
   function busy(){return saving||toggling||savingEvents;}
-  function controls(){for(const id of ['rules-add','rules-first','rules-refresh'])$(id).disabled=busy()||loading;$('rule-save').disabled=saving;$('rule-save').textContent=saving?'Saving…':'Save rule ↗';}
+  function controls(){for(const id of ['rules-add','rules-first','rules-refresh'])$(id).disabled=busy()||loading;$('rule-save').disabled=saving;$('rule-save').textContent=saving?'Saving…':'Save rule';$('rule-step-next').disabled=saving;$('rule-step-back').disabled=saving;}
   function render(){
     $('rules-list').replaceChildren();show('rules-empty',rules.length===0);
     for(const row of rules){
@@ -75,13 +77,42 @@ export function createRules({request,friendlyError,getSession,getGeneration,onVi
   function formExplanation(){const device=devices.find(d=>d.id===$('rule-device').value),channel=channels.find(c=>c.id===$('rule-channel').value&&c.device_id===device?.id),hardware=device?.config.mode==='hardware';show('rule-pot-example',hardware&&channel?.channel_key==='pot_raw'&&channel.unit==='raw');$('rule-source-hint').textContent=hardware?'Hardware saved readings. Run this test in the browser after uploading samples. Estimated timestamps keep their quality label. This rule does not run on your ESP32 or phone.':'Simulation saved readings. The existing simulation test format is retained.';try{const cfg=formConfig(),bound=binding(cfg);$('rule-explanation').textContent=explain(cfg,bound?.channel.unit||'');}catch(err){$('rule-explanation').textContent=describeError(err,'Complete the rule settings to see its explanation.');}}
   function usePotExample(){const device=devices.find(d=>d.id===$('rule-device').value),channel=channels.find(c=>c.id===$('rule-channel').value&&c.device_id===device?.id);if(device?.config.mode!=='hardware'||channel?.channel_key!=='pot_raw'||channel.unit!=='raw')return;$('rule-name').value='High potentiometer';$('rule-operator').value='above';$('rule-threshold').value='3000';$('rule-reset').value='2800';$('rule-hold').value='0';$('rule-cooldown').value='30';$('rule-gap').value='30';$('rule-severity').value='warning';$('rule-event-title').value='Potentiometer is above 3000 raw';formExplanation();}
   function editRule(row=null){
-    if(busy())return;if(!devices.length||!channels.length){message('rules-error','Add a device and a numeric input stream in Devices & data first.');return;}
+    if(busy())return;if(!devices.length||!channels.length){message('rules-error','Add a device with a numeric input in Datastreams.');return;}
     let cfg=null;if(row){try{cfg=normalize(row);}catch(err){message('rules-error',describeError(err));return;}}
-    editId=row?.id||crypto.randomUUID();editRevision=row?.revision||0;pendingSave=null;$('rule-form').reset();$('rule-dialog-title').textContent=row?'Edit your rule.':'Create a rule.';
-    $('rule-name').value=row?.name||'High temperature';sourceOptions(cfg?.device_id,cfg?.channel_id);$('rule-operator').value=cfg?.operator||'above';$('rule-threshold').value=String(cfg?.threshold??32);$('rule-reset').value=String(cfg?.reset_threshold??30);$('rule-hold').value=String(cfg?.hold_seconds??30);$('rule-cooldown').value=String(cfg?.cooldown_seconds??60);$('rule-gap').value=String(cfg?.max_gap_seconds??120);$('rule-severity').value=cfg?.action.severity||'warning';$('rule-event-title').value=cfg?.action.title||'Temperature is above the class limit';$('rule-enabled').checked=row?row.enabled:true;message('rule-form-error','');formExplanation();$('rule-dialog').showModal();$('rule-name').focus();
+    editId=row?.id||crypto.randomUUID();editRevision=row?.revision||0;pendingSave=null;$('rule-form').reset();$('rule-dialog-title').textContent=row?'Edit event rule':'Create event rule';
+    $('rule-name').value=row?.name||'High temperature';sourceOptions(cfg?.device_id,cfg?.channel_id);$('rule-operator').value=cfg?.operator||'above';$('rule-threshold').value=String(cfg?.threshold??32);$('rule-reset').value=String(cfg?.reset_threshold??30);$('rule-hold').value=String(cfg?.hold_seconds??30);$('rule-cooldown').value=String(cfg?.cooldown_seconds??60);$('rule-gap').value=String(cfg?.max_gap_seconds??120);$('rule-severity').value=cfg?.action.severity||'warning';$('rule-event-title').value=cfg?.action.title||'Temperature is above the class limit';$('rule-enabled').checked=row?row.enabled:true;message('rule-form-error','');formExplanation();$('rule-dialog').showModal();setStep(0);
   }
+  function setStep(next){
+    editorStep=next;
+    steps.forEach((element,index)=>{element.hidden=index!==next;});
+    $('rule-step-progress').textContent='Step '+(next+1)+' of '+steps.length+' · '+steps[next].dataset.ruleStep;
+    $('rule-step-back').hidden=next===0;
+    $('rule-step-next').hidden=next===steps.length-1;
+    $('rule-save').hidden=next!==steps.length-1;
+    message('rule-form-error','');
+    if(next===steps.length-1)formExplanation();
+    (steps[next].querySelector('select,input,summary')||$('rule-save')).focus();
+  }
+  function nextStep(){
+    if(saving)return;
+    if(editorStep===0&&!$('rule-device').value){message('rule-form-error','Choose a device.');return;}
+    if(editorStep===1&&!$('rule-channel').value){message('rule-form-error','Choose a numeric input.');return;}
+    if(editorStep===3&&[...steps[3].querySelectorAll('input')].some(input=>!input.validity.valid)){
+      message('rule-form-error','Enter a valid trigger, reset value, and timing.');return;
+    }
+    if(editorStep===4){
+      if(!$('rule-name').value.trim()){message('rule-form-error','Enter a rule name.');return;}
+      try{const config=formConfig();if(!binding(config))throw localError('Choose a numeric input from this project.');}
+      catch(error){message('rule-form-error',describeError(error,'Review the threshold and event details.'));return;}
+    }
+    if(editorStep<steps.length-1)setStep(editorStep+1);
+  }
+  $('rule-step-next').addEventListener('click',nextStep);
+  $('rule-step-back').addEventListener('click',()=>{if(!saving&&editorStep>0)setStep(editorStep-1);});
+
   async function saveRule(event){
     event.preventDefault();if(saving||!project||!editId)return;
+    if(editorStep<steps.length-1){nextStep();return;}
     const name=$('rule-name').value.trim();if(!name||name.length>120){message('rule-form-error','Enter a rule name of 1–120 characters.');return;}
     let cfg;try{cfg=formConfig();if(!binding(cfg))throw localError('Choose a numeric input source from this project.');}catch(err){message('rule-form-error',describeError(err));return;}
     const ctx=context(),id=editId,enabled=!!$('rule-enabled').checked,sig=JSON.stringify({name,enabled,cfg});saving=true;controls();message('rule-form-error','');
