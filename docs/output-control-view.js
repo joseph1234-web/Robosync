@@ -1,45 +1,161 @@
 import { animateWidget } from './widget-motion.js?v=0.37.0';
-import { controlReadiness,controlResult,authenticatedControlBoot } from './control-state.js?v=0.36.1';
+import { controlReadiness,controlResult,authenticatedControlBoot,commandMatches,commandPresentation,reportedDelivery } from './control-state.js?v=3.0.0';
 import { CONTROL_STATE_SPEC } from './control-state-spec.js?v=0.36.1';
 import { streamDescriptor,negotiateStreamCapabilities,validateControlValue } from './stream-contract.js?v=0.36.1';
 import { behavior,validateBehavior } from './widget-behavior.js?v=0.36.1';
-import { executorReason,advancedKind,commandState,schedulePayload,thermostatPayload } from './advanced-controls.js?v=0.38.0';
+import { executorReason,advancedKind,schedulePayload,thermostatPayload } from './advanced-controls.js?v=0.38.0';
 /** Foreground owner controls. Draft input is never sent by render, refresh or reconnect. */
 export function renderOutputControl(w,{channel,device,request,canUse,active,client,channels=[channel],readings=()=>[],onDispose=()=>{},isOwner=canUse,isOnline=()=>globalThis.navigator?.onLine!==false,statusSource=null}){
  const box=document.createElement('div');box.className='io-control';
+
  const fields=document.createElement('fieldset'),status=document.createElement('p');
- const requested=document.createElement('p'),reported=document.createElement('p');
- const connection=document.createElement('p'),details=document.createElement('details'),summary=document.createElement('summary'),help=document.createElement('p');
+ const details=document.createElement('details'),summary=document.createElement('summary');
+ const help=document.createElement('p'),ackDetail=document.createElement('p'),contact=document.createElement('p'),upload=document.createElement('p'),feedback=document.createElement('p');
+ const connection=document.createElement('p'),facts=document.createElement('dl');
  fields.disabled=true;fields.setAttribute('aria-label',w.title);
  status.setAttribute('role','status');status.className='command-result';
- requested.textContent='Requested: —';reported.textContent='Last applied: — · Feedback: unavailable';
  connection.setAttribute('data-control-connection','');connection.setAttribute('role','status');
- summary.textContent='Details';details.append(summary,help,requested,reported);
- box.append(fields,status,connection,details);
+ facts.className='output-values';
+ function fact(title) {
+   const item=document.createElement('div'),label=document.createElement('dt'),value=document.createElement('dd');
+   label.textContent=title;value.textContent='—';item.append(label,value);facts.append(item);return value;
+ }
+ const requested=fact('Last requested'),reported=fact('Board confirmed'),confirmedTime=document.createElement('time');
+ confirmedTime.hidden=true;reported.parentNode.append(confirmedTime);
+ summary.textContent='Connection details';details.append(summary,help,contact,upload,ackDetail,feedback);
+ box.append(connection,facts,fields,status,details);
  const setup=document.createElement('a');setup.textContent='Set up this board';setup.href='./studio.html?project='+encodeURIComponent(device.project_id||'')+'&tab=cloud&device='+encodeURIComponent(device.id);setup.hidden=true;box.append(setup);
- let lastConfirmedBoot=null;let stopped=false,state,descriptor,poll,hold,holding=false,intent=0,ready=false,built=false,connectTimer,wasLive=true,checking=false,failed=false,lastCheck=0,sending=false;
- let rgbDraftDirty=false,rgbSetFromReport=null,commandAwaitingAck=false,lastReportedCommand='',reportInFlight='';const live=()=>!stopped&&active()&&canUse()&&!document.hidden,b=behavior(w),rpc=(name,body)=>request('/rest/v1/rpc/'+name,{method:'POST',authenticated:true,body});
+ let lastConfirmedBoot=null,lastReport=null;let stopped=false,state,descriptor,poll,hold,holding=false,intent=0,ready=false,built=false,connectTimer,wasLive=true,checking=false,failed=false,lastCheck=0,sending=false;
+ let rgbDraftDirty=false,rgbSetFromReport=null,commandAwaitingAck=false,lastReportedCommand='',reportInFlight='',confirmedAt=0,pendingRead=null,manualLookup=null,requestedHere=false,rgbDraftValue=null,applyRgbButton=null;const live=()=>!stopped&&active()&&canUse()&&!document.hidden,b=behavior(w),rpc=(name,body)=>request('/rest/v1/rpc/'+name,{method:'POST',authenticated:true,body});
  const label=(name,node)=>{const row=document.createElement('label'),title=document.createElement('span');title.textContent=name;row.append(title,node);fields.append(row);return node;};
  const button=(name,fn)=>{const node=document.createElement('button');node.type='button';node.textContent=name;node.addEventListener('click',()=>{try{fn();}catch(e){status.textContent=e.message;}});fields.append(node);return node;};
  function valueInput(c,name=c.title){const io=c.config?.io||{};let node;if(io.type==='enum'){node=document.createElement('select');for(const option of io.enum_values||[]){const o=document.createElement('option');o.value=option.value;o.textContent=option.label;node.append(o);}}else if(io.type==='text'&&w.type==='entry'&&b.variant==='multiline'){node=document.createElement('textarea');node.rows=4;node.maxLength=512;}else{node=document.createElement('input');node.type=io.type==='boolean'?'checkbox':io.type==='text'?'text':'number';if(node.type==='text')node.maxLength=512;if(node.type==='number'){node.min=io.min??0;node.max=io.max??100;node.step=io.step??1;}}node.setAttribute('aria-label',name);label(name,node);return{node,read:()=>{if(io.type==='boolean')return node.checked;if(io.type==='number'){if(!node.value.trim())throw Error('Enter a number for '+name+' before Apply.');return Number(node.value);}return node.value;}};}
- function desc(c){return streamDescriptor(c,device,{capabilities:negotiateStreamCapabilities(state.capabilities,device.board_model,true)});}
+ function desc(c){return streamDescriptor(c,device,{capabilities:negotiateStreamCapabilities(state?.capabilities,device.board_model,true)});}
  function checkValue(c,value){validateControlValue(desc(c),value);return value;}
- async function requestValue(value,operation='set',batch=null){if(!live()||sending||!readiness().ready){updateConnection();return;}sending=true;commandAwaitingAck=true;fields.disabled=true;const token=++intent;clearTimeout(poll);try{if(operation==='set'&&!batch)checkValue(channel,value);requested.textContent='Requested: '+JSON.stringify(batch?batch.map(i=>({channel:i.channel,value:i.value})):value);status.textContent='Requested · waiting for cloud acceptance';const receipt=batch?await client.sendBatch(batch,state.last_boot):await client.send(channel.id,state.last_boot,operation,value);if(!live()||token!==intent)return;status.textContent='Cloud accepted · board application pending';const receipts=receipt.commands||[receipt],until=Math.max(...receipts.map(c=>Date.parse(c.deadline)));let animated=false;async function ack(){if(!live()||token!==intent)return;try{const acks=await Promise.all(receipts.map(c=>client.status(c.id)));if(!live()||token!==intent)return;status.textContent=acks.map((ack,i)=>(acks.length>1?(i+1)+'. ':'')+commandState(ack)).join(' · ');const results=acks.filter(a=>a.state==='applied').map(a=>controlResult(a,descriptor));if(results.length&&!animated){animated=true;animateWidget(box.closest?.('.dashboard-widget'),w.design?.icon||w.type);}if(results.length)reported.textContent=acks.length===1?'Last applied: '+signalLabel(results[0].signal)+' · Feedback: '+(results[0].feedback==null?'unavailable':JSON.stringify(results[0].feedback)):'Board applied '+results.length+' / '+acks.length+' fields · see acknowledgement results';if(acks.some(a=>a.state==='accepted')&&Date.now()<until)poll=setTimeout(ack,400);else{commandAwaitingAck=false;if(acks.some(a=>a.state==='accepted'))status.textContent='Expired / ACK unconfirmed · never replayed';}if(acks.some(a=>a.state==='applied')&&['schedule','thermostat'].includes(operation))watchReported(receipts[0].id,operation==='schedule'?Date.parse(value.at)+5000:Date.now()+value.seconds*1000+5000,token);}catch{commandAwaitingAck=false;status.textContent='ACK unconfirmed · no automatic replay after expiry';}}poll=setTimeout(ack,300);}catch(e){commandAwaitingAck=false;if(!stopped&&token===intent)status.textContent='Rejected / unconfirmed · '+e.message;}finally{sending=false;updateConnection();}}
+
+ function localTime(value) {
+   const stamp=Date.parse(value);
+   return Number.isFinite(stamp)?new Date(stamp).toLocaleString():null;
+ }
+ function progress(code,label,detail='') {
+   status.dataset.phase=code;
+   if(status.textContent!==label)status.textContent=label;
+   ackDetail.textContent=detail;
+ }
+ function hex(value) {
+   return Array.isArray(value)&&value.length===3&&value.every(v=>Number.isInteger(v)&&v>=0&&v<=255)
+     ?'#'+value.map(v=>v.toString(16).padStart(2,'0')).join('').toUpperCase():null;
+ }
+ function displayValue(node,value) {
+   node.replaceChildren();
+   const color=descriptor?.type==='rgb'?hex(value):null;
+   if(color){
+     const swatch=document.createElement('span');swatch.className='output-swatch';
+     swatch.setAttribute('aria-hidden','true');swatch.style.backgroundColor=color;node.append(swatch);
+   }
+   node.append(document.createTextNode(color||signalLabel(value)));
+ }
+ function confirm(ack,signal) {
+   if(signal==null)return;
+   const at=Date.parse(ack.result_at);
+   if(Number.isFinite(at)&&at<confirmedAt)return;
+   confirmedAt=Number.isFinite(at)?at:confirmedAt;
+   displayValue(reported,signal);
+   const stamp=localTime(ack.result_at);
+   confirmedTime.hidden=!stamp;
+   if(stamp){confirmedTime.dateTime=ack.result_at;confirmedTime.textContent=stamp;confirmedTime.title='Cloud time of board acknowledgment';}
+   feedback.textContent=ack.result?.feedback==null?'Physical feedback unavailable.':'Physical feedback: '+JSON.stringify(ack.result.feedback);
+   if(descriptor?.type==='rgb'&&rgbSetFromReport){
+     if(hex(signal)===rgbDraftValue?.())rgbDraftDirty=false;
+     if(!rgbDraftDirty)rgbSetFromReport(signal);
+   }
+ }
+ async function requestValue(value,operation='set',batch=null) {
+   if(!live()||sending||!readiness().ready){updateConnection();return;}
+   try{if(operation==='set'&&!batch)checkValue(channel,value);}catch(error){progress('rejected','Invalid request',error.message);return;}
+   const token=++intent,boot=state.last_boot;
+   sending=true;commandAwaitingAck=true;fields.disabled=true;clearTimeout(poll);pendingRead=manualLookup=null;requestedHere=true;
+   displayValue(requested,batch?batch.map(i=>i.value):value);
+   progress('requested','Requesting command','Waiting for cloud acceptance.');
+   function observe(receipts,accepted) {
+     const bound=receipts.map((item,i)=>({id:item.id,device:device.id,channel:batch?batch[i].channel:channel.id,boot}));
+     const until=Math.max(...receipts.map(item=>Date.parse(item.deadline)));
+     if(!bound.length||!Number.isFinite(until)||receipts.some(item=>typeof item.id!=='string')||
+        (accepted&&receipts.some((ack,i)=>!commandMatches(ack,bound[i]))))throw Error('Invalid command receipt.');
+     let animated=false;
+     async function read(useReceipt=false) {
+       if(stopped||token!==intent)return;
+       if(!live()){pendingRead=()=>read();return;}
+       try {
+         const acks=useReceipt?receipts:await Promise.all(bound.map(c=>client.status(c.id)));
+         if(stopped||token!==intent)return;
+         if(!live()){pendingRead=()=>read();return;}
+         if(acks.some((ack,i)=>!commandMatches(ack,bound[i])||!['accepted','applied','rejected','expired'].includes(ack.state)))throw Error('Mismatched acknowledgment.');
+         const states=acks.map(ack=>commandPresentation(ack,reportedDelivery(ack,state,descriptor.pin_id)));
+         progress(states[0].code,states.map((item,i)=>(states.length>1?(i+1)+'. ':'')+item.label).join(' · '),
+           states.map(item=>item.detail).filter((item,i,all)=>all.indexOf(item)===i).join(' '));
+         const applied=acks.filter(ack=>ack.state==='applied');
+         if(applied.length&&!animated){animated=true;animateWidget(box.closest?.('.dashboard-widget'),w.design?.icon||w.type);}
+         if(acks.length===1&&applied.length){
+           const ack=applied[0];
+           confirm(ack,controlResult(ack,descriptor).signal);
+         }else if(applied.length){
+           reported.textContent=applied.length+' / '+acks.length+' fields';
+           confirmedTime.hidden=true;
+         }
+         if(acks.every(ack=>ack.state!=='accepted')){
+           commandAwaitingAck=false;pendingRead=manualLookup=null;
+           if(applied.length&&['schedule','thermostat'].includes(operation))watchReported(bound[0].id,operation==='schedule'?Date.parse(value.at)+5000:Date.now()+value.seconds*1000+5000,token);
+           return;
+         }
+       }catch{
+         if(stopped||token!==intent)return;
+         progress('unconfirmed','ACK unconfirmed','Checking the existing request for a board acknowledgment.');
+       }
+       if(Date.now()<until+1000){poll=setTimeout(()=>read(),400);}
+       else{
+         commandAwaitingAck=false;pendingRead=null;
+         progress('unconfirmed','ACK unconfirmed','Check the board to look up the command result.');
+         manualLookup=()=>read();updateConnection();
+       }
+     }
+     if(accepted)progress('accepted','Accepted by cloud','Waiting for the board.');
+     // Start the read immediately. A receipt returned by an idempotent retry may already be final.
+     void read(accepted&&receipts.every((row,i)=>commandMatches(row,bound[i])&&row.state!=='accepted'));
+   }
+   try{
+     const receipt=batch?await client.sendBatch(batch,boot):await client.send(channel.id,boot,operation,value);
+     if(stopped||token!==intent)return;
+     observe(receipt.commands||[receipt],true);
+   }catch(error){
+     if(stopped||token!==intent)return;
+     if(error.attempted?.length){observe(error.attempted,false);}
+     else{
+       commandAwaitingAck=false;
+       const rejected=error.status>=400&&error.status<500;
+       progress(rejected?'rejected':'unconfirmed',rejected?'Request rejected':'ACK unconfirmed',
+         rejected?'Check the board connection and stream configuration before sending again.':'Cloud acceptance could not be confirmed.');
+     }
+   }finally{sending=false;updateConnection();}
+ }
  function watchReported(command,until,token){if(!live()||token!==intent||Date.now()>until)return;poll=setTimeout(async()=>{if(!live()||token!==intent)return;try{const report=await rpc('rs_io_device_status',{p_device:device.id});if(!live()||token!==intent)return;const output=report.reported?.outputs?.find(o=>o.command===command),contact=Date.parse(report.reported?.control_contact||report.last_contact),fresh=Number.isFinite(contact)&&Date.now()-contact<5000;if(output)reported.textContent='Last board report'+(fresh?'':' · stale')+': '+output.phase+' · commanded signal '+JSON.stringify(output.applied)+' · physical feedback unavailable';if(!output||['armed','regulating'].includes(output.phase))watchReported(command,until,token);}catch{if(live()&&token===intent)reported.textContent='Current board execution report unavailable · no action is replayed';}},1500);}
  const release=()=>{if(!holding)return;holding=false;intent++;clearInterval(hold);client.stop();status.textContent='Released · short board safety lease ends the held output';};
- function build(){const type=w.type;fields.setAttribute('data-kind',type);const reason=executorReason(w,channel,state);if(reason)throw Error(reason);validateBehavior(w,channels);if(type==='apply'||type==='slider'&&b.variant==='range'){const ids=type==='apply'?(b.fields||[channel.id]):[channel.id,b.secondary],items=ids.map(id=>{const c=channels.find(c=>c.id===id);if(!c||!desc(c).enabled)throw Error('Every field needs a matching authenticated writable stream.');return{c,input:valueInput(c,type==='slider'?(id===channel.id?'Lower limit':'Upper limit'):c.title)};});if(type==='slider')for(const item of items){const range=document.createElement('input');range.type='range';for(const key of ['min','max','step'])range[key]=item.input.node[key];range.setAttribute('aria-label',item.c.id===channel.id?'Lower range handle':'Upper range handle');range.value=item.input.node.min||'0';range.addEventListener('input',()=>item.input.node.value=range.value);item.input.node.addEventListener('input',()=>{if(item.input.node.value.trim()&&Number.isFinite(Number(item.input.node.value)))range.value=item.input.node.value;});label('Range handle',range);}button('Apply '+(type==='slider'?'range':'all fields'),()=>{const list=items.map(({c,input})=>({channel:c.id,value:checkValue(c,input.read())}));if(type==='slider'&&list[0].value>list[1].value)throw Error('Lower handle must not exceed upper handle.');requestValue(null,'set',list);});label('Result policy',document.createTextNode('Cloud acceptance is one transaction. Board results are shown per field; physical application is not atomic.'));}
- else if(type==='rgb'){const color=document.createElement('input');color.type='color';color.value='#000000';color.setAttribute('aria-label','RGB color');label('Requested color',color);const values=[0,0,0],sliders=[],outputs=[];for(let n=0;n<3;n++){const slider=document.createElement('input'),out=document.createElement('output');slider.type='range';slider.min=0;slider.max=255;slider.step=1;slider.value='0';slider.setAttribute('aria-label',['Red','Green','Blue'][n]);out.textContent='0';const row=document.createElement('label'),name=document.createElement('span');row.className='rgb-channel';name.textContent=['Red','Green','Blue'][n];row.append(name,slider,out);fields.append(row);slider.addEventListener('input',()=>{rgbDraftDirty=true;values[n]=Number(slider.value);out.textContent=slider.value;color.value='#'+values.map(v=>v.toString(16).padStart(2,'0')).join('');});sliders.push(slider);outputs.push(out);}color.addEventListener('input',()=>{rgbDraftDirty=true;const chosen=color.value.slice(1).match(/../g).map(x=>parseInt(x,16));for(let n=0;n<3;n++){values[n]=chosen[n];sliders[n].value=String(chosen[n]);outputs[n].textContent=String(chosen[n]);}});rgbSetFromReport=signal=>{if(!Array.isArray(signal)||signal.length!==3)return;for(let n=0;n<3;n++){values[n]=signal[n];sliders[n].value=String(signal[n]);outputs[n].textContent=String(signal[n]);}color.value='#'+signal.map(v=>v.toString(16).padStart(2,'0')).join('');};button('Apply RGB',()=>{if(live()&&!sending&&readiness().ready)rgbDraftDirty=false;requestValue(color.value.slice(1).match(/../g).map(x=>parseInt(x,16)));});}
+ function build({draft=false}={}){const type=w.type;fields.setAttribute('data-kind',type);const reason=draft?'':executorReason(w,channel,state);if(reason)throw Error(reason);validateBehavior(w,channels);if(type==='apply'||type==='slider'&&b.variant==='range'){const ids=type==='apply'?(b.fields||[channel.id]):[channel.id,b.secondary],items=ids.map(id=>{const c=channels.find(c=>c.id===id);if(!c||!desc(c).enabled)throw Error('Every field needs a matching authenticated writable stream.');return{c,input:valueInput(c,type==='slider'?(id===channel.id?'Lower limit':'Upper limit'):c.title)};});if(type==='slider')for(const item of items){const range=document.createElement('input');range.type='range';for(const key of ['min','max','step'])range[key]=item.input.node[key];range.setAttribute('aria-label',item.c.id===channel.id?'Lower range handle':'Upper range handle');range.value=item.input.node.min||'0';range.addEventListener('input',()=>item.input.node.value=range.value);item.input.node.addEventListener('input',()=>{if(item.input.node.value.trim()&&Number.isFinite(Number(item.input.node.value)))range.value=item.input.node.value;});label('Range handle',range);}button('Apply '+(type==='slider'?'range':'all fields'),()=>{const list=items.map(({c,input})=>({channel:c.id,value:checkValue(c,input.read())}));if(type==='slider'&&list[0].value>list[1].value)throw Error('Lower handle must not exceed upper handle.');requestValue(null,'set',list);});label('Result policy',document.createTextNode('Cloud acceptance is one transaction. Board results are shown per field; physical application is not atomic.'));}
+ else if(type==='rgb'){const color=document.createElement('input');color.type='color';color.value='#000000';color.setAttribute('aria-label','RGB color');label('Draft color',color);const draft=document.createElement('output');draft.className='rgb-draft';draft.textContent='#000000';color.parentNode.append(draft);rgbDraftValue=()=>color.value.toUpperCase();const values=[0,0,0],sliders=[],outputs=[];for(let n=0;n<3;n++){const slider=document.createElement('input'),out=document.createElement('output');slider.type='range';slider.min=0;slider.max=255;slider.step=1;slider.value='0';slider.setAttribute('aria-label',['Red','Green','Blue'][n]);out.textContent='0';const row=document.createElement('label'),name=document.createElement('span');row.className='rgb-channel';name.textContent=['Red','Green','Blue'][n];row.append(name,slider,out);fields.append(row);slider.addEventListener('input',()=>{rgbDraftDirty=true;values[n]=Number(slider.value);out.textContent=slider.value;color.value=hex(values);draft.textContent=rgbDraftValue();});sliders.push(slider);outputs.push(out);}color.addEventListener('input',()=>{rgbDraftDirty=true;draft.textContent=rgbDraftValue();const chosen=color.value.slice(1).match(/../g).map(x=>parseInt(x,16));for(let n=0;n<3;n++){values[n]=chosen[n];sliders[n].value=String(chosen[n]);outputs[n].textContent=String(chosen[n]);}});rgbSetFromReport=signal=>{if(!Array.isArray(signal)||signal.length!==3)return;for(let n=0;n<3;n++){values[n]=signal[n];sliders[n].value=String(signal[n]);outputs[n].textContent=String(signal[n]);}color.value=hex(signal);draft.textContent=rgbDraftValue();};applyRgbButton=button('Apply RGB',()=>{requestValue(color.value.slice(1).match(/../g).map(x=>parseInt(x,16)));});}
  else if(type==='schedule'){const input=valueInput(channel),date=document.createElement('input'),zone=document.createElement('input'),offset=document.createElement('input');date.type='datetime-local';date.step=60;zone.value=b.timezone||'Asia/Manila';offset.type='number';offset.min=-720;offset.max=840;offset.step=15;offset.value='480';label('Local date and time',date);label('IANA time zone',zone);label('UTC offset in minutes · selects repeated DST occurrence',offset);button('Arm one-shot schedule',()=>requestValue(schedulePayload(date.value,zone.value,Number(offset.value),checkValue(channel,input.read())),'schedule'));button('Cancel schedule + safe off',()=>requestValue(false,'cancel_schedule'));label('Execution policy',document.createTextNode('Board clock · once within 24 hours · RAM only for this boot · skip missed time and outages · fresh authenticated contact required.'));
  }
  else if(type==='thermostat'){const input=valueInput(channel,'Requested setpoint · °C'),measured=channels.find(c=>c.id===b.measured),rows=readings(b.measured),latest=rows.filter(r=>['ok','estimated'].includes(r.quality)&&Number.isFinite(r.value_num)).at(-1),p=document.createElement('p');p.textContent=latest?'Separate measured temperature: '+latest.value_num+' °C · '+latest.recorded_at:'Measured temperature: unavailable · never inferred from setpoint';fields.append(p);button('Start '+(b.seconds||30)+' second thermostat session',()=>requestValue(thermostatPayload(checkValue(channel,input.read()),b.seconds||30,measured?.channel_key),'thermostat'));button('Stop thermostat',()=>requestValue(false,'stop'));label('Safety policy',document.createTextNode('Heat-only signal · 0.5 °C hysteresis · stale/missing measurement, clock/contact loss or session expiry turns output off. No automatic renewal.'));}
- else if(type==='switch'){const choice=valueInput(channel,'Request On');choice.node.setAttribute('role','switch');choice.node.addEventListener('change',()=>requestValue(choice.read()));button('Turn On',()=>{choice.node.checked=true;requestValue(true);});button('Turn Off',()=>{choice.node.checked=false;requestValue(false);});}
+ else if(type==='switch'){
+   button('Turn On',()=>requestValue(true));
+   button('Turn Off',()=>requestValue(false));
+ }
  else if(type==='momentary'){const node=button('Hold',()=>{}),start=e=>{e.preventDefault();if(holding||fields.disabled)return;holding=true;if(e.pointerId!==undefined)node.setPointerCapture?.(e.pointerId);requestValue(true,'press');hold=setInterval(()=>live()?requestValue(true,'press'):release(),350);};node.addEventListener('pointerdown',start);for(const event of ['pointerup','pointercancel','lostpointercapture','blur'])node.addEventListener(event,release);node.addEventListener('keydown',e=>{if([' ','Enter'].includes(e.key)&&!e.repeat)start(e);});node.addEventListener('keyup',release);}
  else if(type==='pulse')button('Pulse · 250 ms',()=>requestValue(true,'pulse'));
  else {const input=valueInput(channel);if(['slider','knob'].includes(type)){const range=document.createElement('input');range.type='range';for(const key of ['min','max','step'])range[key]=input.node[key];range.setAttribute('aria-label',w.title+' requested value');range.value=input.node.min||'0';range.addEventListener('input',()=>input.node.value=range.value);input.node.addEventListener('input',()=>{if(input.node.value.trim()&&Number.isFinite(Number(input.node.value)))range.value=input.node.value;});label(type==='knob'?'Angle / requested value':'Requested slider value',range);}if(type==='stepper')for(const [name,delta]of [['−',-1],['+',1]])button(name,()=>{const bounds=descriptor.bounds,value=input.node.value.trim()?Number(input.node.value):bounds.min??0;input.node.value=String(Math.max(bounds.min??-1e12,Math.min(bounds.max??1e12,value+delta*(bounds.step??1))));});button(type==='console'?'Send allowlisted request':'Apply',()=>requestValue(input.read()));}
- built=true;ready=true;fields.disabled=false;status.textContent='';}
+ built=true;ready=true;fields.disabled=false;progress('idle','No command yet');}
  function signalLabel(value){return value==null?'—':typeof value==='boolean'?(value?'On':'Off'):JSON.stringify(value);}
  function readiness(){return controlReadiness(w,channel,device,state,{owner:isOwner(),online:isOnline(),foreground:active()&&!document.hidden,failed});}
- function updateConnection(){if(stopped)return;const check=readiness();ready=check.ready;setup.hidden=check.code!=='firmware'||!isOwner();if(!ready&&holding)release();fields.disabled=!ready||sending||!live();if(connection.textContent!==check.label)connection.textContent=check.label;const stamp=Date.parse(state?.reported?.control_contact);const detail=check.detail+(Number.isFinite(stamp)?' Last control contact · '+new Date(stamp).toLocaleString():'');if(help.textContent!==detail)help.textContent=detail;connection.setAttribute('data-state',check.code);retry.hidden=ready||!live();return check;}
+ function updateConnection(){if(stopped)return;const check=readiness();ready=check.ready;setup.hidden=check.code!=='firmware'||!isOwner();if(!ready&&holding)release();const locked=!ready||sending||!live();fields.disabled=locked&&!(applyRgbButton&&active()&&isOwner()&&!sending);if(applyRgbButton)applyRgbButton.disabled=locked;if(connection.textContent!==check.label)connection.textContent=check.label;const stamp=Date.parse(lastReport?.reported?.control_contact);if(help.textContent!==check.detail)help.textContent=check.detail;contact.textContent='Last authenticated board poll · '+(Number.isFinite(stamp)?new Date(stamp).toLocaleString():'No report');upload.textContent='Last sensor upload · '+(localTime(lastReport?.last_upload)||'No report');connection.setAttribute('data-state',check.code);retry.hidden=(ready&&!manualLookup)||!live();return check;}
  const load=()=>statusSource?statusSource.read(device.id):rpc('rs_io_device_status',{p_device:device.id});
  // Reconcile only same-boot applied commands with the board's authenticated report.
  // Never treat a color draft, telemetry sample, expired command, or missing ACK as the board state.
@@ -52,20 +168,26 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
   client.status(command).then(ack=>{
    if(!live()||state?.last_boot!==boot||commandAwaitingAck)return;
    const current=state.reported?.outputs?.find(o=>o.pin===d.pin_id);
-   if(current?.command!==command||ack?.state!=='applied'||ack.boot!==boot||ack.device_id!==device.id||ack.channel_id!==channel.id)return;
+   if(current?.command!==command||ack?.state!=='applied'||!commandMatches(ack,{id:command,device:device.id,channel:channel.id,boot}))return;
    const confirmed=controlResult(ack,d).signal;
-   const observed=d.type==='rgb'?current.applied:Array.isArray(current.applied)?current.applied[0]===1:current.applied;
+   const observed=controlResult({state:'applied',result:{applied:current.applied}},d).signal;
    if(confirmed==null||JSON.stringify(confirmed)!==JSON.stringify(observed))return;
    lastReportedCommand=command;
-   const age=Date.now()-Date.parse(state.reported?.control_contact);
-   reported.textContent='Last board-reported: '+signalLabel(confirmed)+(Number.isFinite(age)&&age>CONTROL_STATE_SPEC.scalarFreshMs?' · stale':'')+' · Physical feedback unavailable';
-   if(d.type==='rgb'&&!rgbDraftDirty&&typeof rgbSetFromReport==='function')rgbSetFromReport(confirmed);
+   confirm(ack,confirmed);
+   if(!requestedHere){displayValue(requested,ack.requested);const info=commandPresentation(ack);progress(info.code,info.label,info.detail);}
   }).catch(()=>{}).finally(()=>{if(reportInFlight===command)reportInFlight='';});
  }
- async function checkBoard(){if(checking||!live())return;if(channel.direction==='input'){updateConnection();return;}checking=true;lastCheck=Date.now();try{const next=await load();if(!live())return;const priorBoot=lastConfirmedBoot,nextBoot=authenticatedControlBoot(next,device);if(priorBoot&&nextBoot&&nextBoot!==priorBoot){release();commandAwaitingAck=false;lastReportedCommand='';intent++;clearTimeout(poll);reported.textContent='Last applied: — · Feedback: unavailable';status.textContent='Board restarted · review your draft';}if(nextBoot)lastConfirmedBoot=nextBoot;state=next;failed=false;const check=updateConnection();if(check.ready){descriptor=desc(channel);if(!built){fields.replaceChildren();build();}syncReportedOutput(next);}updateConnection();}catch(error){if(!stopped&&live()){state=null;failed=true;updateConnection();}}finally{checking=false;}}
- const retry=document.createElement('button');retry.type='button';retry.textContent='Check board connection';retry.addEventListener('click',async()=>{retry.disabled=true;try{await checkBoard();}finally{retry.disabled=false;}});box.append(retry);
- const checkConnection=()=>{if(stopped)return;const current=live();if(!current){if(holding)release();if(wasLive)status.textContent='Controls paused · drafts retained';}updateConnection();if(current&&(!wasLive||Date.now()-lastCheck>=(failed?10000:CONTROL_STATE_SPEC.pollMs)))checkBoard();wasLive=current;clearTimeout(connectTimer);connectTimer=setTimeout(checkConnection,1000);};
+ async function checkBoard(){if(checking||!live())return;if(channel.direction==='input'){updateConnection();return;}checking=true;lastCheck=Date.now();try{const next=await load();if(!live())return;const priorBoot=lastConfirmedBoot,nextBoot=authenticatedControlBoot(next,device);if(priorBoot&&nextBoot&&nextBoot!==priorBoot){release();commandAwaitingAck=false;lastReportedCommand='';intent++;clearTimeout(poll);confirmedAt=0;pendingRead=manualLookup=null;requestedHere=false;requested.textContent='—';reported.textContent='—';confirmedTime.hidden=true;feedback.textContent='';progress('unconfirmed','Board restarted','Review the draft before requesting another change.');}if(nextBoot)lastConfirmedBoot=nextBoot;state=lastReport=next;failed=false;const check=updateConnection();if(check.ready){descriptor=desc(channel);if(!built){fields.replaceChildren();build();}syncReportedOutput(next);}updateConnection();}catch(error){if(!stopped&&live()){state=null;failed=true;updateConnection();}}finally{checking=false;}}
+ const retry=document.createElement('button');retry.type='button';retry.textContent='Check board connection';retry.addEventListener('click',async()=>{retry.disabled=true;try{await checkBoard();if(manualLookup)manualLookup();}finally{retry.disabled=false;}});box.append(retry);
+ const checkConnection=()=>{if(stopped)return;const current=live();if(!current){if(holding)release();}updateConnection();if(current&&pendingRead){const resume=pendingRead;pendingRead=null;resume();}
+ if(current&&(!wasLive||Date.now()-lastCheck>=(failed?4500:CONTROL_STATE_SPEC.pollMs)))checkBoard();wasLive=current;clearTimeout(connectTimer);connectTimer=setTimeout(checkConnection,1000);};
  globalThis.addEventListener?.('online',checkConnection);globalThis.addEventListener?.('offline',checkConnection);document.addEventListener?.('visibilitychange',checkConnection);
  onDispose(()=>{stopped=true;clearTimeout(connectTimer);clearTimeout(poll);release();clearInterval(hold);globalThis.removeEventListener?.('online',checkConnection);globalThis.removeEventListener?.('offline',checkConnection);document.removeEventListener?.('visibilitychange',checkConnection);});
+ if(['switch','rgb'].includes(w.type)){
+   try{
+     descriptor=desc(channel);
+     if(descriptor.kind==='output'&&['boolean','rgb'].includes(descriptor.type))build({draft:true});
+   }catch{}
+ }
  updateConnection();checkBoard();connectTimer=setTimeout(checkConnection,1000);return box;
 }

@@ -52,3 +52,31 @@
   .palette-widget:focus-visible .widget-icon{transform:translateY(-2px) rotate(-6deg)}
 }
 @media(hover:hover) and (prefers-reduced-motion:no-preference){.palette-widget:enabled:hover .widget-icon{transform:translateY(-2px) rotate(-6deg)}}
+
+.io-control .output-values {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 9px;
+  margin: 0;
+}
+.io-control .output-values > div {
+  padding: 9px 11px;
+  border: 1px solid var(--widget-border,var(--line));
+  border-radius: 9px;
+  min-width: 0;
+}
+.io-control .output-values dt { color: var(--widget-muted,var(--muted)); font-size: .8125rem; }
+.io-control .output-values dd { margin: 5px 0 0; font-size: 1rem; font-weight: 680; overflow-wrap: anywhere; }
+.io-control .output-values time { display: block; color: var(--widget-muted,var(--muted)); font-size: .75rem; margin-top: 3px; }
+.io-control .output-swatch { display: inline-block; width: 1rem; height: 1rem; border: 1px solid var(--line); border-radius: 4px; margin-right: .38rem; vertical-align: -.12rem; }
+.io-control fieldset[data-kind="switch"] { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.io-control fieldset[data-kind="rgb"] { display: grid; gap: 8px; }
+.io-control fieldset[data-kind="rgb"] label { display: grid; grid-template-columns: 42px minmax(0,1fr) 35px; gap: 8px; align-items: center; }
+.io-control fieldset[data-kind="rgb"] label:has(input[type="color"]) { grid-template-columns: auto 48px 1fr; }
+.io-control fieldset[data-kind="rgb"] input[type="range"] { min-width: 0; width: 100%; margin: 0; }
+.io-control [data-kind="rgb"] output { text-align: end; font-variant-numeric: tabular-nums; }
+.io-control [data-phase="accepted"], .io-control [data-phase="sent"], .io-control [data-phase="requested"] { color: var(--widget-muted,var(--muted)); }
+.io-control [data-phase="applied"] { color: var(--widget-accent,var(--teal)); font-weight: 700; }
+.io-control :is([data-phase="expired"],[data-phase="rejected"],[data-phase="unconfirmed"]) { color: var(--warning); font-weight: 700; }
+.io-control details p { font-size: .8125rem; overflow-wrap: anywhere; }
+.io-control details p:empty { display: none; }

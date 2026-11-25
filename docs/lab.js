@@ -6,10 +6,12 @@ import { boardPinProfile, physicalPinOptions, normalizePinMapping, applyPinMappi
 import { matchingGroupDevices } from './library-model.js?v=0.36.1';
 import { createProjectLibrary } from './project-library.js?v=0.36.1';
 import { SENSOR_PRESETS, ESP32_MODULES, makeStreamDefinition, simulatedValue, streamValue, validStreamReadings } from './sensor-catalog.js?v=0.36.1';
-import { createAnalytics } from './analytics.js?v=0.36.1';
-import { createDashboard } from './dashboard.js?v=0.37.0';
-import { createRules } from './rules.js?v=0.36.1';
+import { createAnalytics } from './analytics.js?v=3.0.0';
+import { createDashboard } from './dashboard.js?v=3.0.0';
+import { createRules } from './rules.js?v=3.0.0';
 import { supportsUsbSensor, usbSensorBinding, sensorUsbBinding } from './usb-sensor.js?v=0.36.1';
+import { addFacts, confirmedOutput, deviceReport, inventoryDate, latestReading, loadDeviceReports, renderDeviceCard, streamFacts } from './device-inventory.js?v=3.0.0';
+import { streamDescriptor, negotiateStreamCapabilities } from './stream-contract.js?v=0.36.1';
 // Device registration and an explicitly labeled browser simulation.
 // All records are written using the signed-in learner's access token and RLS.
 export function createLab({ request, friendlyError, getSession, getGeneration, onDeleteDevice, isDeleting=()=>false }) {
@@ -20,8 +22,10 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
   let project=null,devices=[],device=null,channels=[],channel=null,readings=[],events=[];
   let viewVersion=0,deviceVersion=0,dataVersion=0,eventVersion=0,deviceLoadVersion=0;
   let deviceBusy=false,streamBusy=false,runBusy=false;
-  let pendingDevice=null,pinBusy=false,pinTarget=null;
+  let pendingDevice=null,afterDeviceSaved=null,pinBusy=false,pinTarget=null;
   let streamState='idle',readingState='idle';
+  let activeView='devices', deviceReports=new Map(), deviceCounts=new Map(), directoryValues=new Map(), directoryRun=0;
+  const publishView=view=>dispatchEvent(new CustomEvent('robosynct:project-view',{detail:view}));
   let usbBindingUrl=null,usbBindingText='',usbBindingVersion=0;
   const pendingRuns=new Map(),pendingLive=new Map();
   let liveActive=false,liveTimer=null,liveVersion=0,liveIndex=0;
@@ -31,7 +35,7 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
   const createControlStream=(widget='',preferredDevice='',purpose='')=>controlStreams.open({widget,device:preferredDevice||device?.id||'',purpose});
   const dashboard=createDashboard({request,friendlyError,getSession,getGeneration,createControlStream,getLibrary:()=>library.snapshot(),onCaptureBlueprint:(bp,id)=>library.addBlueprint(bp,id)});
   const analytics=createAnalytics({request,friendlyError,getSession,getGeneration});
-  const ruleBuilder=createRules({request,friendlyError,getSession,getGeneration,onViewEvents:async id=>{showProjectTab('data');const target=devices.find(d=>d.id===id);if(target)await selectDevice(target);}});
+  const ruleBuilder=createRules({request,friendlyError,getSession,getGeneration,onViewEvents:async id=>{showProjectTab('events');const target=devices.find(d=>d.id===id);if(target)await selectDevice(target);}});
   const uuid=()=>crypto.randomUUID();
   const alive=(v,g)=>project&&v===viewVersion&&g===getGeneration()&&getSession();
   const context=()=>({v:viewVersion,g:getGeneration(),d:deviceVersion});
@@ -66,45 +70,160 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
       if(valid()){$('usb-binding-manual').open=true;$('usb-binding-json').focus();message('usb-binding-status','Copy is unavailable. Select and copy the JSON below, then save it as RoboSynct_USB_Binding.json using All files and UTF-8.');}
     }finally{if(valid())$('usb-binding-copy').disabled=false;}
   }
-  function reset() {
+  function reset(notify=true) {
     controlStreams.reset();
     closeUsbBinding();pinTarget=null;if($('stream-pin-dialog').open)$('stream-pin-dialog').close();$('stream-pin-context').textContent='';$('stream-pin-code').textContent='';
-    stopLive();pendingLive.clear();dashboard.reset();library.reset();ruleBuilder.reset();analytics.reset();showProjectTab('data');
+    stopLive();pendingLive.clear();dashboard.reset();library.reset();ruleBuilder.reset();analytics.reset();showProjectTab('devices',false,false);directoryRun++;deviceReports.clear();deviceCounts.clear();directoryValues.clear();
     viewVersion++;deviceVersion++;dataVersion++;eventVersion++;deviceLoadVersion++;
-    project=null;devices=[];device=null;channels=[];channel=null;readings=[];events=[];pendingDevice=null;pendingRuns.clear();
-    streamState='idle';readingState='idle';$('device-search').value='';$('device-filter-mode').value='all';$('device-filter-group').value='';
+    project=null;devices=[];device=null;channels=[];channel=null;readings=[];events=[];pendingDevice=null;afterDeviceSaved=null;pendingRuns.clear();
+    streamState='idle';readingState='idle';$('device-search').value='';$('device-filter-mode').value='all';$('device-filter-group').value='';$('device-filter-status').value='all';
     $('device-search-summary').textContent='';show('device-no-matches',false);show('device-readiness',false);show('usb-sensor-starter',false);$('download-usb-binding').disabled=true;$('download-sensor-usb-binding').disabled=true;
     $('device-list').replaceChildren();$('event-list').replaceChildren();$('chart-container').replaceChildren();
     for(const id of ['project-workspace-title','project-workspace-description','selected-device-name','selected-device-meta'])$(id).textContent='';
     $('device-setup-check').textContent='4';$('device-setup-check').classList.toggle('pending',true);$('device-setup-text').textContent='Open a project and add a simulated ESP32 to begin.';
-    show('project-workspace',false);show('workspace-overview');
+    show('project-workspace',false);show('workspace-overview');if(notify)publishView('overview');
     message('lab-error','');message('lab-notice','');
   }
   async function open(next) {
-    reset();project=next;
+    reset(false);project=next;
     $('project-workspace-title').textContent=next.name;
-    $('project-workspace-description').textContent=next.description||'Add a device and explore your first sensor stream.';
+    $('project-workspace-description').textContent=next.description||'';
     show('workspace-overview',false);show('project-workspace');
     show('sensor-content',false);show('sensor-empty');$('events-empty').textContent='Choose a device to view its events.';show('events-empty');
-    await loadDevices();if(project&&getSession())await library.open(project,devices);
+    publishView(activeView);
+    const version=viewVersion;
+    await loadDevices();
+    if(version===viewVersion&&project&&getSession())await library.open(project,devices);
   }
   function renderDeviceGroups(){const select=$('device-filter-group'),prior=select.value,groups=(library.snapshot().groups||[]).filter(g=>!g.archived);select.replaceChildren();const all=document.createElement('option');all.value='';all.textContent='All groups';select.append(all);for(const group of groups){const option=document.createElement('option');option.value=group.id;option.textContent=group.name;select.append(option);}select.value=groups.some(g=>g.id===prior)?prior:'';}
   function renderDevices() {
+    const expanded=new Set([...$('device-list').querySelectorAll('article:has(details[open])')].map(card=>card.dataset.device));
     $('device-list').replaceChildren();$('device-count').textContent=String(devices.length);show('devices-empty',devices.length===0);
     $('device-setup-check').textContent=devices.length?'✓':'4';$('device-setup-check').classList.toggle('pending',!devices.length);
     $('device-setup-text').textContent=devices.length?'Device details are saved. Select a device to inspect its streams; registration does not verify a hardware link.':'Open a project and add a simulated ESP32 to begin.';
-    const query=$('device-search').value.trim().toLocaleLowerCase(),mode=$('device-filter-mode').value||'all';
+    const query=$('device-search').value.trim().toLocaleLowerCase(),mode=$('device-filter-mode').value||'all',status=$('device-filter-status').value||'all';
     const group=(library.snapshot().groups||[]).find(g=>g.id===$('device-filter-group').value&&!g.archived),allowed=group?new Set(matchingGroupDevices(group,devices,library.snapshot().channels||[],project?.id).map(d=>d.id)):null;
-    const visible=devices.filter(row=>(!allowed||allowed.has(row.id))&&(!query||[row.label,row.board_model,row.transport,row.id].join(' ').toLocaleLowerCase().includes(query))&&(mode==='all'||(mode==='simulation'?isSimulation(row):!isSimulation(row))));
+    const visible=devices.filter(row=>(!allowed||allowed.has(row.id))&&(!query||[row.label,row.board_model,row.transport,row.id].join(' ').toLocaleLowerCase().includes(query))&&(mode==='all'||(mode==='simulation'?isSimulation(row):!isSimulation(row)))&&(status==='all'||deviceReport(row,deviceReports.get(row.id)).status===status));
     $('device-search-summary').textContent=visible.length+' of '+devices.length+' devices · filters affect this list only';
     show('device-no-matches',devices.length>0&&visible.length===0);
     for(const row of visible){
-      const button=document.createElement('button');button.type='button';button.className='device-item'+(device?.id===row.id?' selected':'');button.setAttribute('aria-pressed',String(device?.id===row.id));
-      const name=document.createElement('strong');name.textContent=row.label;
-      const board=document.createElement('span');board.textContent=row.board_model;
-      const badge=document.createElement('span');badge.className='device-type'+(isSimulation(row)?'':' hardware');badge.textContent=isSimulation(row)?'SIMULATED':'REGISTERED · LINK UNVERIFIED';
-      button.append(name,board,badge);button.addEventListener('click',()=>selectDevice(row));$('device-list').append(button);
+      const report=deviceReport(row,deviceReports.get(row.id));
+      const card=renderDeviceCard(row,report,deviceCounts.get(row.id),project?.name||'',{
+        onDetails:async()=>{
+          if(!canLeave())return;
+          if(device?.id!==row.id)await selectDevice(row);
+          if(device?.id===row.id)await showProjectTab('datastreams');
+        },
+        onDashboard:()=>{if(canLeave())showProjectTab('dashboard');},
+        onEvents:async()=>{
+          if(!canLeave())return;
+          if(device?.id!==row.id)await selectDevice(row);
+          if(device?.id===row.id)await showProjectTab('events');
+        }
+      });
+      card.dataset.device=row.id;card.querySelector('details').open=expanded.has(row.id);
+      $('device-list').append(card);
     }
+    renderDeviceScope();
+  }
+
+  function renderDeviceScope(){
+    const select=$('device-scope');
+    select.replaceChildren(...devices.map(row=>new Option(row.label,row.id)));
+    if(!devices.length)select.append(new Option('No devices',''));
+    select.value=device?.id||'';
+    select.disabled=!devices.length;
+  }
+
+  function readDeviceFacts(records,isCurrent){
+    if(!records.length)return;
+    const reportTask=loadDeviceReports(request,records,isCurrent);
+    const countTask=(async()=>{
+      const counts=new Map();
+      for(let start=0;start<records.length&&isCurrent();start+=30){
+        const batch=records.slice(start,start+30),ids=batch.map(row=>row.id).join(',');
+        try{
+          const result=assertRows(await request('/rest/v1/channels?select=device_id,direction&device_id=in.('+encodeURIComponent(ids)+')',{authenticated:true}));
+          for(const row of batch)counts.set(row.id,{sensors:0,outputs:0});
+          for(const row of result){
+            const count=counts.get(row.device_id);
+            if(count){if(row.direction==='output')count.outputs++;else if(row.direction==='input')count.sensors++;}
+          }
+        }catch{}
+      }
+      return counts;
+    })();
+    Promise.all([reportTask,countTask]).then(([reports,counts])=>{
+      if(!isCurrent())return;
+      deviceReports=reports;
+      for(const [id,count] of counts){if(id!==device?.id||streamState!=='ready')deviceCounts.set(id,count);}
+      if(activeView==='devices')renderDevices();
+      if(activeView==='datastreams')refreshDirectory();
+    });
+  }
+
+  function renderDirectory(){
+    if(activeView!=='datastreams')return;
+    const root=$('directory-rows'),query=$('directory-search').value.trim().toLocaleLowerCase(),state=deviceReports.get(device?.id);
+    const visible=channels.filter(row=>[row.title,row.channel_key,streamFacts(row).virtual,streamFacts(row).physical].join(' ').toLowerCase().includes(query));
+    root.replaceChildren();
+    if(!visible.length){
+      const empty=document.createElement('p');
+      empty.className='subtle';
+      empty.textContent=!device?'Add a device to see its streams.':streamState==='loading'?'Loading streams…':streamState==='error'?'Stream list unavailable.':query?'No matching streams.':'No streams on this device yet.';
+      root.append(empty);
+    }
+    for(const row of visible){
+      const facts=streamFacts(row),latest=directoryValues.get(row.id);
+      const article=document.createElement('article'),title=document.createElement('h3'),key=document.createElement('code'),pins=document.createElement('div');
+      title.textContent=row.title; key.textContent=row.channel_key; pins.className='pin-pair';
+      for(const label of ['Virtual '+(facts.virtual||'unassigned'),facts.physical||'GPIO unassigned']){
+        const pin=document.createElement('span');pin.textContent=label;pins.append(pin);
+      }
+      let validation='Saved input';
+      try{
+        const descriptor=streamDescriptor(row,device,{capabilities:negotiateStreamCapabilities(state?.capabilities,device.board_model,true)});
+        if(facts.output)validation=descriptor.enabled?(deviceReport(device,state).controlOnline?'Control ready':'Control contact stale'):'Awaiting matching board output';
+      }catch{validation='Review stream configuration';}
+      article.append(title,key,pins);
+      addFacts(article,[['Direction / type',(facts.output?'Output':'Input')+' · '+facts.type],['Range',facts.range||'—'],['Unit',row.unit||'—'],['Source',device.label],['Status',validation],['Latest value',latest?.value ?? '—'],[facts.output?'Board acknowledged':'Recorded',inventoryDate(latest?.time)]]);
+      const inspect=document.createElement('button');
+      inspect.type='button';inspect.className='text-button';inspect.textContent='Inspect stream';
+      inspect.addEventListener('click',()=>{
+        $('stream-select').value=row.id;
+        $('stream-select').dispatchEvent(new Event('change'));
+        $('stream-select').focus();
+        $('stream-select').scrollIntoView({block:'center'});
+      });
+      article.append(inspect);root.append(article);
+    }
+  }
+
+  async function refreshDirectory(){
+    const run=++directoryRun,ctx=context(),state=deviceReports.get(device?.id);
+    const currentRun=()=>run===directoryRun&&current(ctx)&&activeView==='datastreams';
+    renderDirectory();
+    if(!device||streamState!=='ready'||navigator.onLine===false)return;
+    for(let offset=0;offset<channels.length&&currentRun();offset+=6){
+      await Promise.all(channels.slice(offset,offset+6).map(async row=>{
+        try{
+          let latest;
+          if(row.direction==='output'){
+            const pin=String(row.config?.physical_pin||'').match(/^GPIO(\d{1,2})$/);
+            const report=pin&&state?.reported?.outputs?.find(output=>output.pin===Number(pin[1]));
+            if(report){
+              const ack=await request('/rest/v1/rpc/rs_command_status',{method:'POST',authenticated:true,body:{p_command:report.command}});
+              latest=confirmedOutput(row,state,ack);
+            }
+          }else{
+            const rows=assertRows(await request('/rest/v1/telemetry?select=id,channel_id,recorded_at,value_num,value_bool,value_text,quality&channel_id=eq.'+encodeURIComponent(row.id)+'&order=recorded_at.desc,id.desc&limit=12',{authenticated:true}));
+            latest=latestReading(row,rows);
+          }
+          if(currentRun())directoryValues.set(row.id,latest||null);
+        }catch{}
+      }));
+    }
+    if(currentRun())renderDirectory();
   }
   async function loadDevices(preferredId) {
     if(!project||!getSession())return;
@@ -114,6 +233,7 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
       const rows=assertRows(await request('/rest/v1/devices?select=id,project_id,label,board_model,transport,config,created_at,last_seen_at&project_id=eq.'+encodeURIComponent(project.id)+'&order=created_at.asc',{authenticated:true}));
       if(!alive(v,g)||load!==deviceLoadVersion)return;
       const oldId=preferredId||device?.id;devices=rows;
+      readDeviceFacts(rows,()=>alive(v,g)&&load===deviceLoadVersion);
       device=rows.find(d=>d.id===oldId)||rows[0]||null;renderDevices();
       if(device)await selectDevice(device);else{show('sensor-content',false);show('sensor-empty');}
     }catch(err){if(alive(v,g)&&load===deviceLoadVersion)message('lab-error',friendlyError(err,'Couldn’t load devices. Use the device refresh button to try again.'));}
@@ -122,11 +242,11 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
   async function selectDevice(next) {
     closeUsbBinding();if($('stream-pin-dialog').open)$('stream-pin-dialog').close();pinTarget=null;
     stopLive();message('lab-error','');device=next;deviceVersion++;dataVersion++;eventVersion++;channels=[];channel=null;readings=[];events=[];
-    streamState='loading';readingState='idle';
+    streamState='loading';readingState='idle';directoryRun++;directoryValues.clear();renderDirectory();
     $('event-list').replaceChildren();$('stream-select').replaceChildren();renderDevices();renderReadings();
-    $('selected-device-name').textContent=device.label;$('selected-device-meta').textContent=device.board_model+' · '+(isSimulation(device)?'Browser simulation':'Physical link not monitored here');
+    $('selected-device-name').textContent=device.label;$('selected-device-meta').textContent=device.board_model+' · '+(isSimulation(device)?'Browser simulation':'Registered hardware');
     $('device-mode-badge').textContent=isSimulation(device)?'SIMULATED':'LINK UNVERIFIED';$('device-mode-badge').className='mode-badge'+(isSimulation(device)?'':' hardware');
-    $('simulation-note').textContent=isSimulation(device)?'Simulation mode · Generated in your browser, saved to your database. No physical board is connected.':'Hardware registered · This page loads saved data and does not monitor the physical link. Follow the connection guide for firmware and adapter setup.';
+    $('simulation-note').textContent=isSimulation(device)?'Simulation mode · Generated in your browser, saved to your database. No physical board is connected.':'Readings and output reports for this device.';
     show('sensor-empty',false);show('sensor-content');show('readings-loading');
     updateRunButton();const ctx=context();
     const streamTask=(async()=>{
@@ -134,6 +254,9 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
         const rows=assertRows(await request('/rest/v1/channels?select=id,device_id,channel_key,title,unit,value_type,direction,config&device_id=eq.'+encodeURIComponent(next.id)+'&order=title.asc',{authenticated:true}));
         if(!current(ctx))return;
         streamState='ready';channels=rows.filter(ch=>['number','boolean','text'].includes(ch.value_type));renderChannels();
+        deviceCounts.set(next.id,{sensors:channels.filter(c=>c.direction==='input').length,outputs:channels.filter(c=>c.direction==='output').length});
+        if(activeView==='devices')renderDevices();
+        if(activeView==='datastreams')refreshDirectory();
         if(channel)await loadReadings();else{renderReadings();show('readings-loading',false);}
       }catch(err){if(current(ctx)){streamState='error';renderReadiness();message('lab-error',friendlyError(err,'Couldn’t load sensor streams. Select the device again to retry.'));show('readings-loading',false);}}
     })();
@@ -143,6 +266,7 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
     $('stream-select').replaceChildren();
     for(const row of channels){const option=document.createElement('option');option.value=row.id;option.textContent=streamMappingLabel(row,device?[device]:[]);$('stream-select').append(option);}
     channel=channels.find(ch=>ch.id===preferred)||channels[0]||null;
+    renderDirectory();
     if(!channel){const option=document.createElement('option');option.value='';option.textContent='No streams yet';$('stream-select').append(option);}
     $('stream-select').value=channel?.id||'';$('stream-select').disabled=!channel;$('stream-pin-setup').disabled=!channel||channel.direction==='output'||pinBusy;updateRunButton();renderReadiness();
   }
@@ -224,9 +348,9 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
     await request('/rest/v1/channels?on_conflict=device_id,channel_key',{method:'POST',authenticated:true,prefer:'resolution=ignore-duplicates,return=minimal',body:{id:uuid(),device_id:target.id,...def}});
     const saved=assertRows(await request(query,{authenticated:true}));if(!saved[0])throw new Error('Stream could not be confirmed');return verify(saved[0]);
   }
-  function newDevice(){
+  function newDevice({board='ESP32',hardware=false,onSaved=null}={}){
     if(!project)return;
-    pendingDevice=null;$('device-form').reset();$('device-label').value='ESP32 Lab';$('device-board').value='ESP32';$('device-mode').value='simulation';$('device-sensor').value='temperature';message('device-error','');$('save-device-button').disabled=deviceBusy;$('device-dialog').showModal();$('device-label').focus();
+    pendingDevice=null;afterDeviceSaved=onSaved;$('device-form').reset();$('device-label').value='';$('device-board').value=board;$('device-mode').value=hardware?'hardware':'simulation';$('device-sensor').value='temperature';message('device-error','');$('save-device-button').disabled=deviceBusy;$('device-dialog').showModal();$('device-label').focus();
   }
   async function recordEvents(rows){
     return request('/rest/v1/events?on_conflict=id',{method:'POST',authenticated:true,prefer:'resolution=ignore-duplicates,return=minimal',body:rows});
@@ -238,7 +362,7 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
     if(!['simulation','hardware'].includes(mode)||!presets[presetKey]){message('device-error','Choose a supported mode and sensor.');return;}
     const ctx=context(),signature=JSON.stringify([project.id,label,board,mode,presetKey]);
     if(pendingDevice?.signature!==signature)pendingDevice={signature,id:uuid(),eventId:uuid()};
-    const draft=pendingDevice;
+    const draft=pendingDevice,afterSave=afterDeviceSaved;
     // Store the intended board transport using values accepted by both starter schemas.
     // config.mode/adapter explicitly mark a browser simulation; no MQTT connection is claimed.
     const transport=board==='Arduino Uno R3'?'usb_serial':'mqtt';
@@ -258,8 +382,9 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
       message('lab-error','');
       message('lab-notice',streamAdded&&eventAdded?(mode==='simulation'?'Device and sensor stream saved. Select Run sensor test to save your first readings.':'Hardware details saved. The board is registered but not connected.'):'Device saved.'+(!streamAdded?' Its first stream could not be created. Use Add stream to retry. '+streamError:'')+(!eventAdded?' The registration event could not be recorded. '+eventError:''));
       await loadDevices(target.id);
+      if(alive(ctx.v,ctx.g))afterSave?.(target);
     }catch(err){if(alive(ctx.v,ctx.g))message('device-error',friendlyError(err,saved?'The device was saved. Close this form and refresh devices before trying again.':err.status?'Device save failed.':'Couldn’t confirm the device save. Retry with the same form to avoid creating a duplicate.'));}
-    finally{deviceBusy=false;$('save-device-button').disabled=false;$('save-device-button').textContent='Add device ↗';}
+    finally{deviceBusy=false;$('save-device-button').disabled=false;$('save-device-button').textContent='Add device';}
   }
   function newStream(){if(!device)return;$('stream-catalog').value='streams';$('stream-search').value='';$('new-stream-physical-pin').value='';$('new-stream-virtual-pin').value='';populatePresets('new-stream-preset','','temperature',true);$('custom-stream-type').value='number';$('custom-stream-min').value='0';$('custom-stream-max').value='100';streamFields();message('stream-error','');$('stream-dialog').showModal();}
   async function saveStream(event){
@@ -395,7 +520,9 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
       const symbol=document.createElement('span');symbol.className='event-symbol'+(event.severity==='info'?'':' warning');symbol.textContent=event.severity==='info'?'✓':'!';symbol.setAttribute('aria-hidden','true');
       const copy=document.createElement('div');copy.className='event-copy';
       const title=document.createElement('strong');title.textContent=event.title;
-      const meta=document.createElement('p');meta.textContent=dateTime(event.occurred_at)+' · '+event.severity+(event.acknowledged_at?' · Acknowledged '+dateTime(event.acknowledged_at):'');
+      const meta=document.createElement('p');
+      const source=device?.label||'Device',state=event.acknowledged_at?'Acknowledged '+dateTime(event.acknowledged_at):event.severity==='info'?'Recorded':'Open';
+      meta.textContent=[source,dateTime(event.occurred_at),event.severity,state].join(' · ');
       if(event.detail?.source==='simulation'){const tag=document.createElement('span');tag.className='event-tag';tag.textContent='SIMULATED';meta.append(tag);}
       if(event.detail?.mode==='manual_replay'){const tag=document.createElement('span');tag.className='event-tag';tag.textContent=event.detail.source==='hardware'?'HARDWARE REPLAY':'HISTORICAL RULE TEST';meta.append(tag);if(Number.isFinite(Date.parse(event.detail.observed_at))){const observed=document.createElement('small');observed.className='event-observed';observed.textContent='Observed '+dateTime(event.detail.observed_at)+(event.detail.quality?' · '+event.detail.quality:'');meta.append(observed);}}
       copy.append(title,meta);row.append(symbol,copy);
@@ -419,11 +546,39 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
     for(const row of readings)lines.push([csvCell(device.label),csvCell(channel.title),csvCell(channel.unit),channel.value_type==='number'?(typeof row.value_num==='number'&&Number.isFinite(row.value_num)?String(row.value_num):''):csvCell(streamValue(row,channel.value_type)),csvCell(row.recorded_at),csvCell(row.received_at),csvCell(row.quality),csvCell(isSimulation(device)?'simulation':'hardware')].join(','));
     const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='RoboSynct_readings_'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
-  function showProjectTab(view,load=true){
-    if(!['data','dashboard'].includes(view))stopLive();if(view!=='dashboard')dashboard.deactivate();
-    show('project-data-view',view==='data');show('dashboard-view',view==='dashboard');show('rules-view',view==='rules');show('analytics-view',view==='analytics');show('library-view',view==='library');show('add-device-button',view==='data');
-    for(const name of ['data','dashboard','rules','analytics','library']){const tab=$('project-'+name+'-tab');tab.setAttribute('aria-selected',String(view===name));tab.setAttribute('tabindex',view===name?'0':'-1');}
-    if(load&&project){if(view==='dashboard')return dashboard.open(project,devices);if(view==='rules')return ruleBuilder.open(project,devices);if(view==='analytics')return analytics.open(project,devices);if(view==='library')return library.open(project,devices);}
+  function showProjectTab(view,load=true,notify=true){
+    if(view==='data')view='devices';
+    const base=['devices','datastreams','events'].includes(view)?'data':view;
+    const changed=activeView!==view;
+    activeView=view;
+    $('project-workspace').dataset.view=view;
+    if(!['data','dashboard'].includes(base))stopLive();
+    if(view!=='dashboard')dashboard.deactivate();
+    if(view!=='datastreams')directoryRun++;
+    show('project-data-view',base==='data');
+    show('dashboard-view',view==='dashboard');show('rules-view',view==='rules');
+    show('analytics-view',view==='analytics');show('library-view',view==='library');
+    show('add-device-button',view==='devices');
+    show('project-connect-device',view!=='devices');
+    $('project-data-view').querySelector('.device-panel').hidden=view!=='devices';
+    $('project-data-view').querySelector('.sensor-panel').hidden=view!=='datastreams';
+    $('project-data-view').querySelector('.events-panel').hidden=view!=='events';
+    show('device-scope-row',view==='datastreams'||view==='events');
+    show('stream-directory',view==='datastreams');
+    for(const name of ['data','dashboard','rules','analytics','library']){
+      const tab=$('project-'+name+'-tab');
+      tab.setAttribute('aria-selected',String(base===name));tab.tabIndex=base===name?0:-1;
+    }
+    if(notify&&project)publishView(view);
+    if(load&&project){
+      if(view==='datastreams')return refreshDirectory();
+      if(view==='events')return loadEvents();
+      if(view==='devices'&&changed){renderDevices();return;}
+      if(view==='dashboard')return dashboard.open(project,devices);
+      if(view==='rules')return ruleBuilder.open(project,devices);
+      if(view==='analytics')return analytics.open(project,devices);
+      if(view==='library')return library.open(project,devices);
+    }
   }
   function canLeave(){
     if(isDeleting()){message('lab-notice','Please wait for the deletion check to finish.');return false;}
@@ -450,15 +605,19 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
     }});
   });
   $('project-info-button').addEventListener('click',()=>$('details-dialog').showModal());
-  for(const id of ['add-device-button','empty-add-device'])$(id).addEventListener('click',newDevice);
   $('refresh-devices-button').addEventListener('click',()=>loadDevices());
-  $('device-search').addEventListener('input',renderDevices);$('device-filter-mode').addEventListener('change',renderDevices);$('device-filter-group').addEventListener('change',renderDevices);
-  $('clear-device-search').addEventListener('click',()=>{$('device-search').value='';$('device-filter-mode').value='all';$('device-filter-group').value='';renderDevices();$('device-search').focus();});
+  $('device-search').addEventListener('input',renderDevices);$('device-filter-mode').addEventListener('change',renderDevices);$('device-filter-group').addEventListener('change',renderDevices);$('device-filter-status').addEventListener('change',renderDevices);
+  $('clear-device-search').addEventListener('click',()=>{$('device-search').value='';$('device-filter-mode').value='all';$('device-filter-group').value='';$('device-filter-status').value='all';renderDevices();$('device-search').focus();});
   $('device-form').addEventListener('submit',saveDevice);$('stream-form').addEventListener('submit',saveStream);
   $('stream-pin-setup').addEventListener('click',openPinSetup);$('stream-pin-form').addEventListener('submit',savePinSetup);for(const id of ['stream-physical-pin','stream-virtual-pin'])$(id).addEventListener('input',pinPreview);$('stream-physical-pin').addEventListener('change',pinPreview);$('stream-pin-dialog').addEventListener('close',()=>{if(!$('stream-pin-dialog').open)pinTarget=null;});
   $('add-control-stream-button').addEventListener('click',()=>createControlStream().catch(e=>message('lab-error',e.message)));
+  $('device-scope').addEventListener('change',()=>{
+    const selected=devices.find(row=>row.id===$('device-scope').value);
+    if(selected)selectDevice(selected);
+  });
+  $('directory-search').addEventListener('input',renderDirectory);
   $('add-stream-button').addEventListener('click',newStream);$('run-test-button').addEventListener('click',runTest);
-  $('refresh-data-button').addEventListener('click',loadReadings);$('refresh-events-button').addEventListener('click',loadEvents);
+  $('refresh-data-button').addEventListener('click',()=>{loadReadings();if(activeView==='datastreams')refreshDirectory();});$('refresh-events-button').addEventListener('click',loadEvents);
   $('range-select').addEventListener('change',loadReadings);
   $('stream-select').addEventListener('change',()=>{closeUsbBinding();stopLive();channel=channels.find(c=>c.id===$('stream-select').value)||null;readings=[];renderReadings();updateRunButton();loadReadings();});
   populatePresets('device-sensor');populatePresets('new-stream-preset','','temperature',true);
@@ -475,5 +634,12 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
   $('usb-binding-dialog').addEventListener('cancel',event=>{event.preventDefault();closeUsbBinding();});
   $('usb-binding-dialog').addEventListener('close',()=>{if(!$('usb-binding-dialog').open)clearUsbBinding();});
   for(const id of ['device-dialog','stream-dialog','stream-pin-dialog'])$(id).addEventListener('cancel',event=>{if(id==='device-dialog'?deviceBusy:id==='stream-pin-dialog'?pinBusy:streamBusy)event.preventDefault();});
-  return {openPhoneEditor:async()=>{await showProjectTab('dashboard');dashboard.openPhoneEditor();},open,reset,canLeave,stageStarter:async(bp,target,review)=>{await dashboard.open(project,devices);await dashboard.stageExperiment(bp,target,review);showProjectTab('dashboard',false);},connectionScope:()=>({project:project?{id:project.id,name:project.name}:null,devices:devices.map(d=>({...d})),device:device?{...device}:null,channels:channels.map(c=>({...c})),streamsReady:streamState==='ready'}),selectExistingDevice:async id=>{if(!canLeave())throw new Error('Review unsaved changes first.');const target=devices.find(d=>d.id===id);if(!target)throw new Error('Device unavailable.');await selectDevice(target);},showConnectionDashboard:()=>showProjectTab('dashboard'),showExistingTab:async name=>{if(!canLeave())return;await showProjectTab(name);if(name==='data')$('events-title').focus();},registerDevice:newDevice,blocksClose:id=>id==='device-dialog'?deviceBusy:id==='stream-dialog'?streamBusy:id==='stream-pin-dialog'?pinBusy:dashboard.blocksClose(id)||library.blocksClose(id)||ruleBuilder.blocksClose(id)};
+  return {openPhoneEditor:async()=>{await showProjectTab('dashboard');dashboard.openPhoneEditor();},open,reset,canLeave,stageStarter:async(bp,target,review)=>{await dashboard.open(project,devices);await dashboard.stageExperiment(bp,target,review);showProjectTab('dashboard',false);},connectionScope:()=>({project:project?{id:project.id,name:project.name}:null,devices:devices.map(d=>({...d})),device:device?{...device}:null,channels:channels.map(c=>({...c})),streamsReady:streamState==='ready'}),selectExistingDevice:async id=>{if(!canLeave())throw new Error('Review unsaved changes first.');const target=devices.find(d=>d.id===id);if(!target)throw new Error('Device unavailable.');await selectDevice(target);},showConnectionDashboard:()=>showProjectTab('dashboard'),showExistingTab:async (name,{editEmpty=false}={})=>{
+    if(!project)return false;
+    if(activeView===name&&!editEmpty)return true;
+    if(!canLeave())return false;
+    await showProjectTab(name);
+    if(editEmpty&&name==='dashboard'&&activeView===name)dashboard.editEmpty?.();
+    return activeView===name;
+  },registerDevice:newDevice,blocksClose:id=>id==='device-dialog'?deviceBusy:id==='stream-dialog'?streamBusy:id==='stream-pin-dialog'?pinBusy:dashboard.blocksClose(id)||library.blocksClose(id)||ruleBuilder.blocksClose(id)};
 }

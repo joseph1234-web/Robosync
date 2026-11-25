@@ -40,6 +40,35 @@ export function controlResult(ack,descriptor){
  }
  return {state,signal,feedback:state==='applied'&&r.feedback!=null?r.feedback:null};
 }
+export function commandMatches(ack, expected) {
+  return !!ack && ack.id === expected.id && ack.device_id === expected.device &&
+    ack.channel_id === expected.channel && ack.boot === expected.boot;
+}
+
+// Polling a device alone is not proof that this particular command reached it.
+export function reportedDelivery(command, state, pin) {
+  return !!command?.id && state?.device_id === command.device_id &&
+    state.last_boot === command.boot && Number.isFinite(Date.parse(state.reported?.control_contact)) &&
+    state.reported?.outputs?.some(output => output.pin === pin && output.command === command.id) === true;
+}
+
+export function commandPresentation(ack, received = false) {
+  switch (ack?.state) {
+    case 'accepted': return received
+      ? {code:'sent', label:'Received by board', detail:'The board reported this command. Its acknowledgment is pending.'}
+      : {code:'accepted', label:'Accepted by cloud', detail:'Waiting for the board to receive this command.'};
+    case 'applied':
+      if (ack.result?.phase === 'armed') return {code:'applied', label:'Schedule armed', detail:'The board acknowledged the schedule. Execution has a separate report.'};
+      if (ack.result?.phase === 'regulating') return {code:'applied', label:'Setpoint acknowledged', detail:'The board accepted the setpoint. Temperature comes from the sensor.'};
+      return {code:'applied', label:'Applied and acknowledged', detail:'The board confirmed the output signal.'};
+    case 'rejected': return {code:'rejected', label:'Rejected', detail:'The board or cloud rejected this command. Check its output configuration.'};
+    case 'expired': return {code:'expired', label:'Expired', detail:ack.result?.state === 'applied'
+      ? 'The board reported application after the deadline. Verify the physical output before requesting another change.'
+      : 'The command expired before confirmation. A new request requires another press.'};
+    default: return {code:'unconfirmed', label:'ACK unconfirmed', detail:'A matching acknowledgment is unavailable.'};
+  }
+}
+
 /** A dashboard owns this cache. Generation checks prevent account-crossing replies. */
 export function createControlStatusSource({load,generation=()=>'',now=Date.now,ttl=750}){
  const entries=new Map();let epoch=0;

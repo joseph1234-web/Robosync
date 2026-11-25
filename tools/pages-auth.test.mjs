@@ -41,3 +41,13 @@ test('existing Android pairing keeps its exact origin and route', () => {
   assert.deepEqual(parsePairingLink(url,WEBSITE_ORIGIN),{id,invite});
   assert.throws(()=>parsePairingLink(url,'https://school-example.github.io'));
 });
+
+test('browser Phone Sync accepts the exact Pages route and preserves origin checks', () => {
+  const id='00000000-0000-4000-8000-000000000001',invite='1'.repeat(64);
+  const browserOrigin='https://school-example.github.io',path='/Robosync/android-connect.html';
+  const link=new URL(path,browserOrigin);
+  link.hash=new URL(makePairingLink(WEBSITE_ORIGIN,id,invite)).hash;
+  assert.deepEqual(parsePairingLink(link,browserOrigin,path),{id,invite});
+  assert.throws(()=>parsePairingLink(link,browserOrigin,'/other/android-connect.html'));
+  assert.throws(()=>parsePairingLink(link,WEBSITE_ORIGIN,path));
+});

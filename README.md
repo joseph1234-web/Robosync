@@ -1,6 +1,6 @@
 # RoboSynct on GitHub Pages
 
-This is the editable Site 43 web release (web 0.37.0), adapted from source revision `4853def225b81ad4e63d189db8f855fa579de5d4`. The dashboard, Studio and phone layout editor run from the static files in `docs/`. The existing Supabase project serves sign-in, telemetry, and authorized board commands. Hosting the interface requires no database import, schema changes, or firmware upload.
+This repository contains the RoboSynct Web V3 release. See [Web V3](WEB_V3.md) for the changes, verification commands, and rollback. The dashboard, Studio and phone layout editor run from the static files in `docs/`. The existing Supabase project serves sign-in, telemetry, and authorized board commands. Hosting the interface requires no database import, schema changes, or firmware upload.
 
 ## Publish
 
