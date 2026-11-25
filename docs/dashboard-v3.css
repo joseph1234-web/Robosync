@@ -69,8 +69,6 @@
 #dashboard-options .dashboard-source-scope { margin:8px 0 0; padding:16px; }
 #dashboard-options .dashboard-theme-control { margin:8px 0 0; }
 .workspace .dashboard-status-row { font-size:.825rem; }
-.workspace .io-control [data-kind="rgb"] input[type="color"] { width:48px; }
-.workspace .io-control [data-kind="rgb"] button { justify-self:start; }
 .workspace .io-control .command-result { min-height:20px; }
 
 .workspace .dashboard-widget:not(.editable) .widget-data-updated { margin:8px 0 12px; }

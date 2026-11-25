@@ -150,7 +150,9 @@ class Workspace:
                        {'pin': 22, 'driver': 'rgb', 'pins': [22, 21, 19], 'operations': ['set']}]
             return response({'version': 1, 'device_id': self.device['id'], 'last_boot': 'aabbccddaabbccdd',
                              'last_contact':stamp(1),'last_upload':stamp(3),'backlog':22,
-                             'reported':{'control_contact':stamp(1),'outputs':[],'upload':{'previous_http_code':200,'dropped_newest':0}},
+                             'reported':{'control_contact':stamp(1),
+                                         'outputs':[{'pin':13,'phase':'value_applied','applied':[0]}],
+                                         'upload':{'previous_http_code':200,'dropped_newest':0}},
                              'capabilities': {'kind': 'robosynct-io', 'version': 1, 'board': 'esp32-devkit-v1',
                                               'virtual_pin_max': 254, 'operations': ['set'], 'outputs': outputs,
                                               'executors': {'version': 1, 'rgb': True}}})
@@ -276,11 +278,10 @@ def exercise(browser, screenshot_dir=None):
     canvas = page.locator('#dashboard-canvas')
     expect(canvas).to_contain_text('27.4')
     expect(canvas).to_contain_text('RGB LED')
-    expect(canvas.get_by_role('button', name='Turn On', exact=True)).to_be_enabled()
-    # Changing the RGB draft and merely visiting/editing a relay must not dispatch.
-    red = canvas.get_by_role('slider', name='Red', exact=True)
-    red.focus(); red.press('ArrowRight')
-    expect(red).to_have_value('1')
+    expect(canvas.get_by_role('switch', name='Relay', exact=True)).to_have_attribute('aria-checked','false')
+    expect(canvas.get_by_role('slider', name='Brightness', exact=True)).to_be_enabled()
+    expect(canvas.get_by_role('button', name='Apply RGB')).to_have_count(0)
+    expect(canvas.get_by_role('slider', name='Red', exact=True)).to_have_count(0)
     page.locator('#dashboard-edit').click()
     page.locator('#dashboard-sections').click()
     page.get_by_role('textbox',name='New section name').fill('Lab space')
@@ -331,24 +332,60 @@ def exercise(browser, screenshot_dir=None):
     # Explicit fake-only relay and color requests. All traffic remains inside this fixture.
     relay=canvas.locator('article').filter(has=page.get_by_role('heading',name='Relay',exact=True))
     rgb=canvas.locator('article').filter(has=page.get_by_role('heading',name='RGB LED',exact=True))
+    toggle=relay.get_by_role('switch',name='Relay',exact=True)
+    expect(relay.locator('.output-toggle')).to_have_count(1)
+    expect(relay.locator('.output-values')).to_have_count(0)
     fixture.command_mode='applied'
-    relay.get_by_role('button',name='Turn On',exact=True).click()
-    expect(relay.locator('.command-result')).to_have_text('Applied and acknowledged')
-    expect(relay.locator('.output-values dd').last).to_have_text('On')
+    toggle.click()
+    expect(toggle).to_have_attribute('aria-checked','true')
+    expect(toggle).to_have_text('ON')
     assert fixture.command_posts[-1]['p_value'] is True
     fixture.command_mode='expired'
-    relay.get_by_role('button',name='Turn Off',exact=True).click()
+    toggle.click()
     expect(relay.locator('.command-result')).to_have_text('Expired')
-    expect(relay.locator('.output-values dd').last).to_have_text('On')
+    expect(toggle).to_have_attribute('aria-checked','true')
     assert fixture.command_posts[-1]['p_value'] is False
     fixture.command_mode='applied'
-    rgb.get_by_label('Red',exact=True).fill('45')
+    wheel=rgb.locator('.rgb-wheel')
+    wheel.scroll_into_view_if_needed()
+    rect=wheel.bounding_box()
+    center_y=rect['y']+rect['height']/2
+    page.mouse.move(rect['x']+rect['width']/2,center_y)
+    page.mouse.down()
+    page.mouse.move(rect['x']+rect['width']+3,center_y)
     assert len(fixture.command_posts)==2
-    rgb.get_by_role('button',name='Apply RGB',exact=True).click()
+    page.mouse.up()
     expect(rgb.locator('.command-result')).to_have_text('Applied and acknowledged')
-    expect(rgb.locator('.output-values dd').last).to_have_text('#2D0000')
-    assert fixture.command_posts[-1]['p_value']==[45,0,0]
-    assert len(fixture.command_posts)==3 and not fixture.violations
+    expect(rgb.locator('.output-values dd').last).to_have_text('#FF0000')
+    assert fixture.command_posts[2]['p_value']==[255,0,0]
+    rgb.get_by_role('slider',name='Brightness',exact=True).press('Home')
+    expect(rgb.locator('.output-values dd').last).to_have_text('#000000')
+    assert fixture.command_posts[3]['p_value']==[0,0,0]
+    expect(rgb.locator('.rgb-selection output')).to_have_text('#000000')
+    rgb.get_by_role('slider',name='Brightness',exact=True).press('End')
+    expect(rgb.locator('.output-values dd').last).to_have_text('#FF0000')
+    assert fixture.command_posts[4]['p_value']==[255,0,0]
+    assert len(fixture.command_posts)==5 and not fixture.violations
+    page.locator('#dashboard-options summary').click()
+    page.get_by_role('button',name='Add motor widget',exact=True).click()
+    motor=page.locator('#dashboard-motor-widget')
+    expect(motor.get_by_role('table',name='Pin streams')).to_be_visible()
+    expect(motor.get_by_role('row')).to_have_count(7)
+    motor.get_by_label('Motor driver',exact=True).select_option('L293D')
+    expect(motor.locator('[data-signal=IN4]')).to_contain_text('15 · 4A')
+    arrow=motor.get_by_role('button',name='Hold forward')
+    arrow.focus()
+    page.keyboard.down('Space')
+    expect(motor.locator('[data-signal=ENA] td').last).to_have_text('20%')
+    expect(motor.locator('[data-signal=IN1] td').last).to_have_text('HIGH')
+    page.keyboard.up('Space')
+    expect(motor.locator('[data-signal=ENA] td').last).to_have_text('0%')
+    assert len(fixture.command_posts)==5 and fixture.writes==['layout']
+    with page.expect_download() as firmware:
+        motor.get_by_role('link',name='Download firmware').click()
+    assert firmware.value.suggested_filename=='RoboSynct_L293D_ESP32.zip'
+    page.get_by_role('button',name='Remove motor widget',exact=True).click()
+    expect(motor).to_be_hidden()
     if screenshot_dir:
         page.evaluate('window.scrollTo(0,0)')
         page.screenshot(path=screenshot_dir/'RoboSynct_V3_Desktop_Dashboard.png',full_page=True)
@@ -379,13 +416,17 @@ def exercise(browser, screenshot_dir=None):
     phone.locator('#console-menu').click()
     dashboard(phone)
     expect(phone.locator('#dashboard-canvas')).to_contain_text('Sound activity')
-    expect(phone.get_by_role('button',name='Apply RGB')).to_be_enabled()
+    expect(phone.get_by_role('slider',name='Brightness',exact=True)).to_be_enabled()
     phone.get_by_role('heading',name='Relay',exact=True).scroll_into_view_if_needed()
     assert phone.evaluate('document.documentElement.scrollWidth === window.innerWidth')
     if screenshot_dir:
         phone.evaluate('window.scrollTo(0,0)')
         phone.screenshot(path=screenshot_dir/'RoboSynct_V3_Phone_Dashboard.png',full_page=True)
     assert not mobile_fixture.command_posts and not mobile_fixture.violations
+    phone.goto(SITE+'motor-drive.html?driver=L298N')
+    expect(phone.get_by_role('heading',name='Motor drivers')).to_be_visible()
+    expect(phone.get_by_role('table',name='Pin streams').get_by_role('row')).to_have_count(7)
+    assert phone.evaluate('document.documentElement.scrollWidth === window.innerWidth')
     mobile.close()
 
 
@@ -402,4 +443,4 @@ if __name__ == '__main__':
             exercise(browser,args.screenshots)
         finally:
             browser.close()
-    print('Passed browser smoke: account isolation, desktop and phone UI, board setup, datastreams, saved history/CSV, events, Phone Sync, layout edits, reconnect and relay/RGB acknowledgment and expiry. All cloud and board replies were simulated.')
+    print('Passed browser smoke: account isolation, desktop and phone UI, board setup, layout edits, switch acknowledgment and expiry, RGB release and brightness, and motor pin preview. All cloud and board replies were simulated.')

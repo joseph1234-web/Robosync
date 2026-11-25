@@ -15,7 +15,7 @@ import { streamMappingLabel } from './stream-mapping.js?v=0.36.1';
 import { widgetLibraryInventory,filterWidgetLibrary,WIDGET_LIBRARY_GROUPS,librarySeriesOrder,widgetSupportsStream,widgetLibraryPreview } from './widget-library.js?v=3.0.0';
 import { applyWidgetAppearance } from './widget-visual.js?v=0.37.0';
 import { protectedMedia } from './protected-media.js?v=0.36.1';
-import { CONTROL_TYPES, SPECIAL_TYPES, compatibleWidget, createCommandClient, renderOutputControl, phoneColumns } from './io-widgets.js?v=3.0.0';
+import { CONTROL_TYPES, SPECIAL_TYPES, compatibleWidget, createCommandClient, renderOutputControl, phoneColumns } from './io-widgets.js?v=3.0.1';
 import { renderSpecial } from './io-display.js?v=0.37.0';
 import { patchWidgetReadingTree,widgetSourceRevision } from './stable-widget-refresh.js?v=0.36.1';
 import { missingExperimentWidgets } from './experiment-model.js?v=0.36.1';
@@ -27,6 +27,7 @@ import { THEME_IDS, applySurfaceTheme } from './themes.js?v=0.36.1';
 import { createLayoutGestures, normalizeWidgetSize } from './layout-gestures.js?v=0.36.1';
 import { streamValue, validStreamReadings, displayStreamNumber } from './sensor-catalog.js?v=0.36.1';
 import { createMediaWidgets, validateMediaUrl } from './media-widget.js?v=0.36.1';
+import { motorDriver,renderMotorPreview } from './motor-preview.js?v=3.0.1';
 // One versioned JSON document keeps a dashboard save atomic within the existing
 // widgets table. The canonical record ID equals the project ID. RLS still applies.
 export function createDashboard({request,friendlyError,getSession,getGeneration,createControlStream=null,getLibrary=()=>({groups:[],blueprints:[],ready:false}),onCaptureBlueprint=()=>{throw new Error('Load the project library first.');}}) {
@@ -59,12 +60,50 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   const widgetRoots=new Map();
   let layoutExtras={},savedExtras={};const disposers=new Map();const dispose=id=>{for(const f of disposers.get(id)||[])f();disposers.delete(id);};const controlClient=createCommandClient({rpc:(name,body,options)=>request('/rest/v1/rpc/'+name,{...options,method:'POST',authenticated:true,body}),canUse:()=>active&&!!getSession()&&navigator.onLine!==false});
   let active=false,autoTimer=null,autoVersion=0,refreshing=false,syncTimer=null,syncVersion=0;
+  const motorSlot=$('dashboard-motor-widget'),motorToggle=$('dashboard-motor-toggle');
+  let motorKey='',motorProfile='',motor=null;
+  function removeMotor(){
+    motor?.stop();motor=null;
+    if(motorSlot){motorSlot.replaceChildren();motorSlot.hidden=true;}
+  }
+  function saveMotor(profile){
+    motorProfile=profile;
+    try{if(profile)localStorage.setItem(motorKey,profile);else localStorage.removeItem(motorKey);}catch{}
+  }
+  function renderMotor(){
+    if(!motorSlot||!motorToggle)return;
+    const owner=getSession()?.user?.id;
+    const key=owner&&project?.id?'robosynct.motor-preview:'+owner+':'+project.id:'';
+    if(key!==motorKey){
+      removeMotor();motorKey=key;motorProfile='';
+      try{if(key)motorProfile=localStorage.getItem(key)||'';}catch{}
+    }
+    const available=!!key&&active&&loaded&&!loadFailed&&!editing&&!phonePreview();
+    motorToggle.hidden=!available;
+    motorToggle.textContent=motorProfile?'Remove motor widget':'Add motor widget';
+    if(!available||!motorProfile){removeMotor();return;}
+    if(!motor){
+      motor=renderMotorPreview({driver:motorDriver(motorProfile),dashboard:true,onProfileChange:saveMotor});
+      motorSlot.append(motor.element);
+    }
+    applySurfaceTheme(motor.element,dashboardTheme);
+    motorSlot.hidden=false;
+  }
+  motorToggle?.addEventListener('click',()=>{
+    if(motorToggle.hidden||!motorKey)return;
+    saveMotor(motorProfile?'':'L298N');renderMotor();
+    if(motor)motorSlot.scrollIntoView({block:'nearest'});
+  });
+  if(motorSlot){
+    addEventListener('blur',()=>motor?.stop());
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)motor?.stop();});
+  }
   const controlStatus=createControlStatusSource({generation:getGeneration,load:id=>request('/rest/v1/rpc/rs_io_device_status',{method:'POST',authenticated:true,body:{p_device:id},timeoutMs:4500})});
   const layoutSignature=(items=widgets,theme=dashboardTheme,extras=layoutExtras)=>signature({widgets:items,theme,extras});
   const media=createMediaWidgets({canUse:()=>active&&!!project&&!!getSession()});
   const gestures=createLayoutGestures({canvas:$('dashboard-canvas'),canEdit:()=>active&&editing&&!phonePreview()&&!saving&&loaded&&!loadFailed,onAdd:(type,index)=>newWidget(type,index),onMove:move,onResize:resizeWidget,onCancel:render,onAnnounce:text=>{$('dashboard-layout-status').textContent=text;}});
   const phoneGestures=createLayoutGestures({canvas:$('dashboard-canvas'),phoneMode:()=>true,canEdit:()=>active&&editing&&phonePreview()&&!saving&&loaded&&!loadFailed,onAdd:()=>{},onMove:(id,index)=>{const order=phoneOrder(phoneConfig()).filter(w=>w.id!==id);changePhone(id,{before:order[index]?.id||null});},onResize:(id,size)=>changePhone(id,{span:[4,6,12].reduce((best,n)=>Math.abs(n-size.columns)<Math.abs(best-size.columns)?n:best,6),height:size.height}),onCancel:render,onAnnounce:text=>{$('dashboard-layout-status').textContent=text;}});
-  function deactivate(){controlStatus.clear();controlClient.stop();for(const id of disposers.keys())dispose(id);widgetRoots.clear();gestures.cancel();phoneGestures.cancel();clearTimeout(syncTimer);syncVersion++;active=false;clearTimeout(autoTimer);autoVersion++;media.stopAll();}
+  function deactivate(){controlStatus.clear();controlClient.stop();for(const id of disposers.keys())dispose(id);widgetRoots.clear();gestures.cancel();phoneGestures.cancel();clearTimeout(syncTimer);syncVersion++;active=false;removeMotor();clearTimeout(autoTimer);autoVersion++;media.stopAll();}
   function queueAuto(){
     clearTimeout(autoTimer);const cycle=++autoVersion;
     if(!active||!project||!getSession()||!$('dashboard-auto-refresh').checked||document.hidden)return;
@@ -183,6 +222,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   function render(){
     renderLibrary();
     if(gestures.isActive()||phoneGestures.isActive()){syncControls();return;}
+    renderMotor();
     updateViewerOptions();
     const select=$('dashboard-viewer-section'),tabbar=$('dashboard-real-tabs');
     if(tabbar.dataset.sections!==select.dataset.sections){
