@@ -6,7 +6,9 @@ Device cards show telemetry and authenticated control contact separately. The co
 
 Dashboards use the existing layout record and widget bindings. Editing supports named sections, compatible stream selection, previews in the widget library, drag or keyboard layout changes, and the phone layout editor. Analytics displays when samples were recorded and when a known upload delay occurred. The CSV includes both timestamps.
 
-Relay and RGB controls distinguish a draft, a request accepted by the cloud, a matching board report, and an acknowledged output. An expired request retains its separate status, and a color adjustment is a draft until Apply RGB. Status checks start immediately after cloud acceptance. The existing command deadlines, controller leases, board authentication, pairing, and Supabase authorization apply.
+The relay switch displays the board-confirmed output. The RGB wheel sends the selected color on release, and the brightness control sends its final value when the adjustment ends. An expired request retains its own status. Status checks start immediately after cloud acceptance. The command deadlines, controller leases, board authentication, pairing, and Supabase authorization apply.
+
+Dashboard options can add the motor preview for this project in the current browser. The motor setup page includes an L293D and L298N direction pad, six simulated pin levels, and firmware downloads for the original ESP32 DevKit V1. Live drive control and motor pin readings use the paired board through Android 1.24.0.
 
 The guided event editor uses saved readings for tests. Cloud thresholds are available through the existing cloud rule service when enabled in Supabase. Phone Sync shows the saved layout and active pairings. Native Android updates follow the separate APK release process.
 

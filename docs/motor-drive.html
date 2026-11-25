@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Preview L293D and L298N motor drive controls and download the RoboSynct ESP32 firmware.">
+  <title>Motor drivers · RoboSynct</title>
+  <script src="./theme-init.js?v=0.36.1"></script>
+  <link rel="stylesheet" href="./style.css?v=0.39.0">
+  <link rel="stylesheet" href="./themes.css?v=0.36.1">
+  <link rel="stylesheet" href="./motor-drive.css?v=3.0.1">
+  <script type="module" src="./motor-drive-page.js?v=3.0.1"></script>
+</head>
+<body>
+  <main class="motor-page">
+    <nav aria-label="RoboSynct"><a class="brand" href="./">Robo<span>Synct</span></a><a href="./">Workspace</a></nav>
+    <header>
+      <h1>Motor drivers</h1>
+      <p>Try the controls and see how each direction changes the six pin signals.</p>
+    </header>
+    <div id="motor-preview"></div>
+    <section class="motor-setup" aria-labelledby="motor-setup-title">
+      <h2 id="motor-setup-title">Connect your ESP32</h2>
+      <ol>
+        <li>Choose your driver and download its firmware for the original ESP32 DevKit V1.</li>
+        <li>Use the wiring guide in the ZIP, then verify and upload the sketch in Arduino IDE.</li>
+        <li>In RoboSynct Android, open <strong>Dashboard → Options → Add motor widget</strong>. Pair the motor board over Bluetooth or local Wi-Fi.</li>
+      </ol>
+      <p>Live motor controls and pin readings are in the Android app.</p>
+    </section>
+    <footer><a href="https://www.ti.com/lit/ds/symlink/l293d.pdf">L293D datasheet</a><a href="https://www.st.com/resource/en/datasheet/l298.pdf">L298 datasheet</a></footer>
+  </main>
+</body>
+</html>
