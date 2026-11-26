@@ -13,20 +13,12 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
  const fields=document.createElement('fieldset'),status=document.createElement('p');
  const details=document.createElement('details'),summary=document.createElement('summary');
  const help=document.createElement('p'),ackDetail=document.createElement('p'),contact=document.createElement('p'),upload=document.createElement('p'),feedback=document.createElement('p');
- const connection=document.createElement('p'),facts=document.createElement('dl');
+ const connection=document.createElement('p');
  fields.disabled=true;fields.setAttribute('aria-label',w.title);
  status.setAttribute('role','status');status.className='command-result';
  connection.setAttribute('data-control-connection','');connection.setAttribute('role','status');
- facts.className='output-values';
- function fact(title) {
-   const item=document.createElement('div'),label=document.createElement('dt'),value=document.createElement('dd');
-   label.textContent=title;value.textContent='—';item.append(label,value);facts.append(item);return value;
- }
- const requested=fact('Last requested'),reported=fact('Board confirmed'),confirmedTime=document.createElement('time');
- confirmedTime.hidden=true;reported.parentNode.append(confirmedTime);
  summary.textContent='Connection details';details.append(summary,help,contact,upload,ackDetail,feedback);
  box.append(connection);
- if(!simpleSwitch)box.append(facts);
  box.append(fields,status);
  if(!simpleSwitch)box.append(details);
  const setup=document.createElement('a');setup.textContent='Set up this board';setup.href='./studio.html?project='+encodeURIComponent(device.project_id||'')+'&tab=cloud&device='+encodeURIComponent(device.id);setup.hidden=true;box.append(setup);
@@ -63,24 +55,11 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
      toggle.setAttribute('aria-label',name);
    }
  }
- function displayValue(node,value) {
-   node.replaceChildren();
-   const color=descriptor?.type==='rgb'?rgbHex(value):null;
-   if(color){
-     const swatch=document.createElement('span');swatch.className='output-swatch';
-     swatch.setAttribute('aria-hidden','true');swatch.style.backgroundColor=color;node.append(swatch);
-   }
-   node.append(document.createTextNode(color||signalLabel(value)));
- }
  function confirm(ack,signal) {
    if(signal==null)return;
    const at=Date.parse(ack.result_at);
    if(Number.isFinite(at)&&at<confirmedAt)return;
    confirmedAt=Number.isFinite(at)?at:confirmedAt;
-   displayValue(reported,signal);
-   const stamp=localTime(ack.result_at);
-   confirmedTime.hidden=!stamp;
-   if(stamp){confirmedTime.dateTime=ack.result_at;confirmedTime.textContent=stamp;confirmedTime.title='Cloud time of board acknowledgment';}
    feedback.textContent=ack.result?.feedback==null?'Physical feedback unavailable.':'Physical feedback: '+JSON.stringify(ack.result.feedback);
    if(simpleSwitch)setSwitchSignal(signal);
    if(rgbPicker){
@@ -94,7 +73,6 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
    const token=++intent,boot=state.last_boot;
    sending=true;commandAwaitingAck=true;fields.disabled=true;clearTimeout(poll);pendingRead=manualLookup=null;requestedHere=true;
    rgbPicker?.setEnabled(false);
-   displayValue(requested,batch?batch.map(i=>i.value):value);
    progress('requested','Requesting command','Waiting for cloud acceptance.');
    function observe(receipts,accepted) {
      const bound=receipts.map((item,i)=>({id:item.id,device:device.id,channel:batch?batch[i].channel:channel.id,boot}));
@@ -118,9 +96,6 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
          if(acks.length===1&&applied.length){
            const ack=applied[0];
            confirm(ack,controlResult(ack,descriptor).signal);
-         }else if(applied.length){
-           reported.textContent=applied.length+' / '+acks.length+' fields';
-           confirmedTime.hidden=true;
          }
          if(acks.every(ack=>ack.state!=='accepted')){
            commandAwaitingAck=false;pendingRead=manualLookup=null;
@@ -156,7 +131,7 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
        rejected?'Check the board connection and stream configuration before sending again.':'Cloud acceptance could not be confirmed.');
    }finally{sending=false;updateConnection();}
  }
- function watchReported(command,until,token){if(!live()||token!==intent||Date.now()>until)return;poll=setTimeout(async()=>{if(!live()||token!==intent)return;try{const report=await rpc('rs_io_device_status',{p_device:device.id});if(!live()||token!==intent)return;const output=report.reported?.outputs?.find(o=>o.command===command),contact=Date.parse(report.reported?.control_contact||report.last_contact),fresh=Number.isFinite(contact)&&Date.now()-contact<5000;if(output)reported.textContent='Last board report'+(fresh?'':' · stale')+': '+output.phase+' · commanded signal '+JSON.stringify(output.applied)+' · physical feedback unavailable';if(!output||['armed','regulating'].includes(output.phase))watchReported(command,until,token);}catch{if(live()&&token===intent)reported.textContent='Current board execution report unavailable · no action is replayed';}},1500);}
+ function watchReported(command,until,token){if(!live()||token!==intent||Date.now()>until)return;poll=setTimeout(async()=>{if(!live()||token!==intent)return;try{const report=await rpc('rs_io_device_status',{p_device:device.id});if(!live()||token!==intent)return;const output=report.reported?.outputs?.find(o=>o.command===command),contact=Date.parse(report.reported?.control_contact||report.last_contact),fresh=Number.isFinite(contact)&&Date.now()-contact<5000;if(output)ackDetail.textContent='Last board report'+(fresh?'':' · stale')+': '+output.phase+' · commanded signal '+JSON.stringify(output.applied)+' · physical feedback unavailable';if(!output||['armed','regulating'].includes(output.phase))watchReported(command,until,token);}catch{if(live()&&token===intent)ackDetail.textContent='Current board execution report unavailable · no action is replayed';}},1500);}
  const release=()=>{if(!holding)return;holding=false;intent++;clearInterval(hold);client.stop();status.textContent='Released · short board safety lease ends the held output';};
  function build({draft=false}={}){const type=w.type;fields.setAttribute('data-kind',type);const reason=draft?'':executorReason(w,channel,state);if(reason)throw Error(reason);validateBehavior(w,channels);if(type==='apply'||type==='slider'&&b.variant==='range'){const ids=type==='apply'?(b.fields||[channel.id]):[channel.id,b.secondary],items=ids.map(id=>{const c=channels.find(c=>c.id===id);if(!c||!desc(c).enabled)throw Error('Every field needs a matching authenticated writable stream.');return{c,input:valueInput(c,type==='slider'?(id===channel.id?'Lower limit':'Upper limit'):c.title)};});if(type==='slider')for(const item of items){const range=document.createElement('input');range.type='range';for(const key of ['min','max','step'])range[key]=item.input.node[key];range.setAttribute('aria-label',item.c.id===channel.id?'Lower range handle':'Upper range handle');range.value=item.input.node.min||'0';range.addEventListener('input',()=>item.input.node.value=range.value);item.input.node.addEventListener('input',()=>{if(item.input.node.value.trim()&&Number.isFinite(Number(item.input.node.value)))range.value=item.input.node.value;});label('Range handle',range);}button('Apply '+(type==='slider'?'range':'all fields'),()=>{const list=items.map(({c,input})=>({channel:c.id,value:checkValue(c,input.read())}));if(type==='slider'&&list[0].value>list[1].value)throw Error('Lower handle must not exceed upper handle.');requestValue(null,'set',list);});label('Result policy',document.createTextNode('Cloud acceptance is one transaction. Board results are shown per field; physical application is not atomic.'));}
  else if(type==='rgb'){
@@ -178,7 +153,6 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
  else if(type==='pulse')button('Pulse · 250 ms',()=>requestValue(true,'pulse'));
  else {const input=valueInput(channel);if(['slider','knob'].includes(type)){const range=document.createElement('input');range.type='range';for(const key of ['min','max','step'])range[key]=input.node[key];range.setAttribute('aria-label',w.title+' requested value');range.value=input.node.min||'0';range.addEventListener('input',()=>input.node.value=range.value);input.node.addEventListener('input',()=>{if(input.node.value.trim()&&Number.isFinite(Number(input.node.value)))range.value=input.node.value;});label(type==='knob'?'Angle / requested value':'Requested slider value',range);}if(type==='stepper')for(const [name,delta]of [['−',-1],['+',1]])button(name,()=>{const bounds=descriptor.bounds,value=input.node.value.trim()?Number(input.node.value):bounds.min??0;input.node.value=String(Math.max(bounds.min??-1e12,Math.min(bounds.max??1e12,value+delta*(bounds.step??1))));});button(type==='console'?'Send allowlisted request':'Apply',()=>requestValue(input.read()));}
  built=true;ready=true;fields.disabled=false;progress('idle','No command yet');}
- function signalLabel(value){return value==null?'—':typeof value==='boolean'?(value?'On':'Off'):JSON.stringify(value);}
  function readiness(){return controlReadiness(w,channel,device,state,{owner:isOwner(),online:isOnline(),foreground:active()&&!document.hidden,failed});}
  function updateConnection(){
    if(stopped)return;
@@ -223,10 +197,10 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
    if(confirmed==null||JSON.stringify(confirmed)!==JSON.stringify(currentSignal))return;
    lastReportedCommand=command;
    confirm(ack,confirmed);
-   if(!requestedHere){displayValue(requested,ack.requested);const info=commandPresentation(ack);progress(info.code,info.label,info.detail);}
+   if(!requestedHere){const info=commandPresentation(ack);progress(info.code,info.label,info.detail);}
   }).catch(()=>{}).finally(()=>{if(reportInFlight===command)reportInFlight='';});
  }
- async function checkBoard(){if(checking||!live())return;if(channel.direction==='input'){updateConnection();return;}checking=true;lastCheck=Date.now();try{const next=await load();if(!live())return;const priorBoot=lastConfirmedBoot,nextBoot=authenticatedControlBoot(next,device);if(priorBoot&&nextBoot&&nextBoot!==priorBoot){release();commandAwaitingAck=false;lastReportedCommand='';intent++;clearTimeout(poll);confirmedAt=0;pendingRead=manualLookup=null;requestedHere=false;requested.textContent='—';reported.textContent='—';confirmedTime.hidden=true;setSwitchSignal(null);feedback.textContent='';progress('unconfirmed','Board restarted','Review the draft before requesting another change.');}if(nextBoot)lastConfirmedBoot=nextBoot;state=lastReport=next;failed=false;const check=updateConnection();if(check.ready){descriptor=desc(channel);if(!built){fields.replaceChildren();build();}syncReportedOutput(next);}updateConnection();}catch(error){if(!stopped&&live()){state=null;failed=true;updateConnection();}}finally{checking=false;}}
+ async function checkBoard(){if(checking||!live())return;if(channel.direction==='input'){updateConnection();return;}checking=true;lastCheck=Date.now();try{const next=await load();if(!live())return;const priorBoot=lastConfirmedBoot,nextBoot=authenticatedControlBoot(next,device);if(priorBoot&&nextBoot&&nextBoot!==priorBoot){release();commandAwaitingAck=false;lastReportedCommand='';intent++;clearTimeout(poll);confirmedAt=0;pendingRead=manualLookup=null;requestedHere=false;setSwitchSignal(null);feedback.textContent='';progress('unconfirmed','Board restarted','Review the draft before requesting another change.');}if(nextBoot)lastConfirmedBoot=nextBoot;state=lastReport=next;failed=false;const check=updateConnection();if(check.ready){descriptor=desc(channel);if(!built){fields.replaceChildren();build();}syncReportedOutput(next);}updateConnection();}catch(error){if(!stopped&&live()){state=null;failed=true;updateConnection();}}finally{checking=false;}}
  const retry=document.createElement('button');retry.type='button';retry.textContent='Check board connection';retry.addEventListener('click',async()=>{retry.disabled=true;try{await checkBoard();if(manualLookup)manualLookup();}finally{retry.disabled=false;}});box.append(retry);
  const checkConnection=()=>{if(stopped)return;const current=live();if(!current){if(holding)release();}updateConnection();if(current&&pendingRead){const resume=pendingRead;pendingRead=null;resume();}
  if(current&&(!wasLive||Date.now()-lastCheck>=(failed?4500:CONTROL_STATE_SPEC.pollMs)))checkBoard();wasLive=current;clearTimeout(connectTimer);connectTimer=setTimeout(checkConnection,1000);};

@@ -1,3 +1,6 @@
+import { motorDriver,renderMotorPreview } from './motor-preview.js?v=3.0.2';
+import { cameraMediaId,hardwareWidget,motorStreamProfile } from './hardware-streams.js?v=3.0.2';
+import { openHardwareSetup } from './hardware-setup.js?v=3.0.2';
 import { animateWidget, sampleAdvanced } from './widget-motion.js?v=0.37.0';
 import { controlPurposeChoices } from './control-stream-model.js?v=0.37.0';
 import { createControlStatusSource } from './control-state.js?v=3.0.0';
@@ -14,12 +17,11 @@ import { phonePreviewCard } from './phone-preview.js?v=0.37.0';
 import { streamMappingLabel } from './stream-mapping.js?v=0.36.1';
 import { widgetLibraryInventory,filterWidgetLibrary,WIDGET_LIBRARY_GROUPS,librarySeriesOrder,widgetSupportsStream,widgetLibraryPreview } from './widget-library.js?v=3.0.0';
 import { applyWidgetAppearance } from './widget-visual.js?v=0.37.0';
-import { protectedMedia } from './protected-media.js?v=0.36.1';
-import { CONTROL_TYPES, SPECIAL_TYPES, compatibleWidget, createCommandClient, renderOutputControl, phoneColumns } from './io-widgets.js?v=3.0.1';
-import { renderSpecial } from './io-display.js?v=0.37.0';
+import { protectedMedia } from './protected-media.js?v=3.0.2';
+import { CONTROL_TYPES, SPECIAL_TYPES, compatibleWidget, createCommandClient, renderOutputControl, phoneColumns } from './io-widgets.js?v=3.0.2';
+import { renderSpecial } from './io-display.js?v=3.0.2';
 import { patchWidgetReadingTree,widgetSourceRevision } from './stable-widget-refresh.js?v=0.36.1';
 import { missingExperimentWidgets } from './experiment-model.js?v=0.36.1';
-import { pinSummary } from './stream-pins.js?v=0.36.1';
 import { WIDGET_DESIGN } from './widget-design.js?v=0.37.0';
 import { readingDelivery } from './reading-delivery.js?v=3.0.0';
 import { BUILTIN_BLUEPRINTS, instantiateBlueprint, captureSensorBlueprint, matchingGroupDevices } from './library-model.js?v=0.36.1';
@@ -27,7 +29,6 @@ import { THEME_IDS, applySurfaceTheme } from './themes.js?v=0.36.1';
 import { createLayoutGestures, normalizeWidgetSize } from './layout-gestures.js?v=0.36.1';
 import { streamValue, validStreamReadings, displayStreamNumber } from './sensor-catalog.js?v=0.36.1';
 import { createMediaWidgets, validateMediaUrl } from './media-widget.js?v=0.36.1';
-import { motorDriver,renderMotorPreview } from './motor-preview.js?v=3.0.1';
 // One versioned JSON document keeps a dashboard save atomic within the existing
 // widgets table. The canonical record ID equals the project ID. RLS still applies.
 export function createDashboard({request,friendlyError,getSession,getGeneration,createControlStream=null,getLibrary=()=>({groups:[],blueprints:[],ready:false}),onCaptureBlueprint=()=>{throw new Error('Load the project library first.');}}) {
@@ -103,7 +104,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   const media=createMediaWidgets({canUse:()=>active&&!!project&&!!getSession()});
   const gestures=createLayoutGestures({canvas:$('dashboard-canvas'),canEdit:()=>active&&editing&&!phonePreview()&&!saving&&loaded&&!loadFailed,onAdd:(type,index)=>newWidget(type,index),onMove:move,onResize:resizeWidget,onCancel:render,onAnnounce:text=>{$('dashboard-layout-status').textContent=text;}});
   const phoneGestures=createLayoutGestures({canvas:$('dashboard-canvas'),phoneMode:()=>true,canEdit:()=>active&&editing&&phonePreview()&&!saving&&loaded&&!loadFailed,onAdd:()=>{},onMove:(id,index)=>{const order=phoneOrder(phoneConfig()).filter(w=>w.id!==id);changePhone(id,{before:order[index]?.id||null});},onResize:(id,size)=>changePhone(id,{span:[4,6,12].reduce((best,n)=>Math.abs(n-size.columns)<Math.abs(best-size.columns)?n:best,6),height:size.height}),onCancel:render,onAnnounce:text=>{$('dashboard-layout-status').textContent=text;}});
-  function deactivate(){controlStatus.clear();controlClient.stop();for(const id of disposers.keys())dispose(id);widgetRoots.clear();gestures.cancel();phoneGestures.cancel();clearTimeout(syncTimer);syncVersion++;active=false;removeMotor();clearTimeout(autoTimer);autoVersion++;media.stopAll();}
+  function deactivate(){if(hardwareDialog?.open)hardwareDialog.close();controlStatus.clear();controlClient.stop();for(const id of disposers.keys())dispose(id);widgetRoots.clear();gestures.cancel();phoneGestures.cancel();clearTimeout(syncTimer);syncVersion++;active=false;removeMotor();clearTimeout(autoTimer);autoVersion++;media.stopAll();}
   function queueAuto(){
     clearTimeout(autoTimer);const cycle=++autoVersion;
     if(!active||!project||!getSession()||!$('dashboard-auto-refresh').checked||document.hidden)return;
@@ -203,6 +204,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     if($('widget-dialog').open)$('widget-dialog').close();syncControls();
   }
   function syncControls(){
+    hardwareButton.disabled=!active||!loaded||loadFailed||saving||widgets.length>=maxWidgets;
     show('dashboard-edit-toolbar',editing);show('widget-palette-panel',editing);$('dashboard-canvas').classList.toggle('editing-canvas',editing);show('dashboard-edit',!editing);
     $('dashboard-edit').disabled=!loaded||loadFailed||saving;$('dashboard-refresh').disabled=phonePreview()||refreshing;$('dashboard-phone-preview').disabled=!loaded||loadFailed||saving;$('dashboard-phone-studio').hidden=editing;
     $('dashboard-add').disabled=saving||widgets.length>=maxWidgets;
@@ -244,8 +246,13 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     for(const w of shown){
       const i=widgets.findIndex(item=>item.id===w.id),placement=placements.get(w.id);
       const sig=JSON.stringify([w,i,editing,dashboardTheme,preview,preview?phoneWidth():0,preview?phoneScale():0,preview?placement:null,layoutExtras.custom_phone_layout===true,widgetSourceRevision(w,channels,devices,project?.id,behaviorRefs(w))]);
-      const old=widgetRoots.get(w.id),same=old?.sig===sig;
-      if(same&&(preview||unbound.includes(w.type)||CONTROL_TYPES.includes(w.type))){ordered.push(old.element);continue;}
+      const motorBinding=w.type==='health'?bind(w):null;
+      const driver=motorStreamProfile(motorBinding?.channel,motorBinding?.device);
+      const motorMapping=driver?channels.filter(row=>motorStreamProfile(row,motorBinding.device)===driver)
+        .map(row=>[row.channel_key,row.config.virtual_pin]):[];
+      const widgetSignature=driver?sig+JSON.stringify(motorMapping):sig;
+      const old=widgetRoots.get(w.id),same=old?.sig===widgetSignature;
+      if(same&&(preview||driver||unbound.includes(w.type)||CONTROL_TYPES.includes(w.type))){ordered.push(old.element);continue;}
       if(!same)dispose(w.id);
       const fresh=preview?phonePreviewCard(w,placement,{className:'dashboard-widget',theme:dashboardTheme==='site'?websiteColors():dashboardTheme,scale:phoneScale(),channel:channels.find(c=>c.id===w.channel_id)}):renderWidget(w,i);
       if(preview&&editing&&!same)phoneCardTools(fresh,w,placement);
@@ -255,7 +262,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
         if(!editing&&sampleAdvanced(old.newest,stamp))animateWidget(old.element,widgetIconId(w));
         old.newest=Math.max(old.newest||0,stamp);
         ordered.push(old.element);
-      }else{widgetRoots.set(w.id,{sig,element:fresh,newest:stamp});ordered.push(fresh);}
+      }else{widgetRoots.set(w.id,{sig:widgetSignature,element:fresh,newest:stamp});ordered.push(fresh);}
     }
     for(const [id,item] of widgetRoots)if(!visible.has(id)){dispose(id);item.element.remove();widgetRoots.delete(id);}placePanelNodes(canvas,shown,ordered);
     $('dashboard-filter-summary').textContent=visible.size+' of '+widgets.length+' widgets shown · '+(preview?'Phone order, size and visibility applied. ':'')+'Temporary filters are local to this browser.';
@@ -269,6 +276,28 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   function changePhone(id,change){if(!editing||saving)return;try{const next=editPhoneLayout(phoneConfig(),id,change);commit(next.widgets,dashboardTheme,Object.fromEntries(Object.entries(next).filter(([k])=>!['widgets','theme','kind','save_token'].includes(k))));}catch(e){message('dashboard-error',e.message);}}
   function openPhoneEditor(){if(!loaded||loadFailed||saving)return;startEditing();gestures.cancel();phoneGestures.cancel();media.stopAll();controlClient.stop();$('dashboard-phone-preview').setAttribute('aria-pressed','true');render();$('dashboard-phone-editor').scrollIntoView({block:'nearest'});}
   function phoneCardTools(card,w,placement){const tools=document.createElement('div');tools.className='phone-card-tools';const ordered=phoneOrder(phoneConfig()),at=ordered.findIndex(x=>x.id===w.id);for(const [label,fn,disabled]of [['↑',()=>changePhone(w.id,{before:ordered[at-1]?.id}),at===0],['↓',()=>changePhone(w.id,{before:ordered[at+2]?.id||null}),at===ordered.length-1],['Edit',()=>editWidget(w.id),false]]){const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=saving||disabled;b.setAttribute('aria-label',(label==='↑'?'Move up':label==='↓'?'Move down':label)+' '+w.title);b.addEventListener('click',fn);tools.append(b);}const grip=document.createElement('button');grip.type='button';grip.textContent='↕';grip.setAttribute('aria-label','Drag '+w.title);grip.style.touchAction='none';grip.addEventListener('pointerdown',e=>phoneGestures.beginMove(e,w.id,w.title));tools.append(grip);const resize=document.createElement('button');resize.type='button';resize.textContent='↘';resize.setAttribute('aria-label','Resize '+w.title);resize.style.touchAction='none';resize.addEventListener('pointerdown',e=>phoneGestures.beginResize(e,w.id,card,{columns:placement?.span||6,height:placement?.height||0}));resize.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();if(e.key==='ArrowUp'||e.key==='ArrowDown')changePhone(w.id,{height:Math.max(160,Math.min(960,(placement?.height||240)+(e.key==='ArrowUp'?-20:20)))});else{const spans=[4,6,12],index=spans.indexOf(placement?.span||6);changePhone(w.id,{span:spans[Math.max(0,Math.min(2,index+(e.key==='ArrowLeft'?-1:1)))]});}});tools.append(resize);if(layoutExtras.custom_phone_layout&&w.phone?.visible===false){const hidden=document.createElement('span');hidden.textContent='Hidden on phone';tools.append(hidden);}card.append(tools);}
+  const hardwareButton=$('dashboard-add-hardware');
+  let hardwareDialog=null;
+  hardwareButton.addEventListener('click',()=>{
+    if(!active||!loaded||loadFailed||saving||hardwareDialog?.open)return;
+    const ctx=context();
+    hardwareDialog=openHardwareSetup({devices,request,addWidget:true,current:()=>active&&current(ctx),onReady:({profile,device,catalog,streams})=>{
+      if(!active||!current(ctx)||saving)return;
+      const next=hardwareWidget(profile,device,streams);
+      channels=[...channels.filter(row=>row.device_id!==device.id),...catalog];
+      librarySignature='';
+      if(widgets.some(w=>w.channel_id===next.channel_id&&w.type===next.type)){
+        render();
+        message('dashboard-notice','Hardware streams and widget are ready in this project.');
+        return;
+      }
+      if(widgets.length>=maxWidgets)throw Error('The dashboard is full. Remove a widget before adding this card.');
+      if(new Set([...widgets,next].flatMap(behaviorRefs)).size>24)throw Error('This dashboard already uses the maximum of 24 streams.');
+      if(!editing)startEditing();
+      commit([...widgets,cleanWidget(next)]);
+      message('dashboard-notice','Hardware streams are ready. Save dashboard to sync the new widget.');
+    }});
+  });
   function bind(w){
     const device=devices.find(d=>d.id===w.device_id&&d.project_id===project?.id);
     const channel=channels.find(c=>c.id===w.channel_id&&c.device_id===device?.id&&accepts(w.type,c));
@@ -324,11 +353,34 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
       const pin=document.createElement('span');pin.className='widget-pin';pin.textContent=vpin.toUpperCase();head.append(pin);
     }
     card.append(head);
-    if(w.type==='note'){const p=document.createElement('p');p.className='widget-note-copy';p.textContent=w.note;decorateWidgetText(p,w);card.append(p);}
+    const source=bind(w),motorProfile=w.type==='health'?motorStreamProfile(source?.channel,source?.device):'';
+    if(motorProfile){
+      tag.textContent='Motor driver';
+      const streams=channels.filter(row=>motorStreamProfile(row,source.device)===motorProfile);
+      const controller=renderMotorPreview({driver:motorProfile,streams,dashboard:true,interactive:!editing});
+      const stop=()=>{if(document.hidden)controller.stop();};
+      addEventListener('blur',controller.stop);
+      document.addEventListener('visibilitychange',stop);
+      if(!disposers.has(w.id))disposers.set(w.id,[]);
+      disposers.get(w.id).push(()=>{
+        controller.stop();removeEventListener('blur',controller.stop);document.removeEventListener('visibilitychange',stop);
+      });
+      card.append(controller.element);
+    }
+    else if(w.type==='note'){const p=document.createElement('p');p.className='widget-note-copy';p.textContent=w.note;decorateWidgetText(p,w);card.append(p);}
     else if(w.type==='panel'){const group=document.createElement('div');group.className='dashboard-panel-grid';group.setAttribute('data-panel-grid','');group.setAttribute('role','group');group.setAttribute('aria-label',w.title);card.append(group);}
     else if(w.type==='heading'){const p=document.createElement('h2');p.className='widget-section-heading';if(widgetTextPlan(w,'title').enabled){const title=document.createElement('span');title.textContent=w.title;title.style.flex='1';decorateWidgetText(title,w,'title');p.append(title);}else p.textContent=w.title;p.append(widgetIcon(widgetIconId(w)));head.hidden=true;card.append(p);}
     else if(w.type==='divider'){const line=document.createElement('hr');line.className='widget-divider';card.append(line);}
-    else if(w.type==='camera'&&w.mode==='protected')card.append(protectedMedia(w,{request,getSession,canUse:()=>active&&!!getSession()&&navigator.onLine!==false,onDispose:f=>{if(!disposers.has(w.id))disposers.set(w.id,[]);disposers.get(w.id).push(f);}}));
+    else if(w.type==='camera'&&w.mode==='protected'){
+      if(w.media_id===cameraMediaId(source?.channel,source?.device)){
+        card.append(protectedMedia(w,{request,getSession,canUse:()=>active&&!!getSession()&&navigator.onLine!==false,
+          onDispose:f=>{if(!disposers.has(w.id))disposers.set(w.id,[]);disposers.get(w.id).push(f);}}));
+      }else{
+        const notice=document.createElement('p');notice.className='widget-error-state';
+        notice.textContent='Camera stream unavailable. Check the saved camera binding.';
+        card.append(notice);
+      }
+    }
     else if(w.type==='camera')card.append(media.render(w));
     else{
       const binding=bind(w),data=datasets.get(w.channel_id),valid=validStreamReadings(data?.rows||[],binding?.channel.value_type||'number'),summary=binding?.channel.value_type==='number'?summarize(data):null;
@@ -348,7 +400,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
         card.append(makeGauge(w,summary.latest,binding.channel.unit,binding.channel));
         if(summary.latest<w.min||summary.latest>w.max){const p=document.createElement('p');p.className='widget-out-of-range';p.textContent='Reading is outside the configured gauge range.';card.append(p);}
       }else if(w.type==='chart'){
-        card.append(makeChart(w,data,summary,binding.channel.unit));const p=document.createElement('p');p.className='widget-chart-count';p.textContent=`Latest ${data.rows.length} stored readings · ${summary.valid.length} valid · ${binding.channel.unit||'Stream units'}`;card.append(p);
+        card.append(makeChart(w,data,summary,binding.channel.unit));
       }
       else if(w.type==='text'){
         const text=document.createElement('p');text.className='widget-text-reading';decorateWidgetText(text,w);text.textContent=String(valid.at(-1).value_text).slice(0,2000);card.append(text);
@@ -358,25 +410,15 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
         const text=document.createElement('span');text.textContent=on?w.on_label:w.off_label;decorateWidgetText(text,w);if(widgetTextPlan(w).enabled){label.style.width="100%";label.style.boxSizing="border-box";text.style.flex="1";}label.append(text);card.append(label);
       }else if(w.type==='progress'){
         const value=summary.latest,bar=document.createElement('progress');bar.max=1;bar.value=Math.max(0,Math.min(1,(value-w.min)/(w.max-w.min)));bar.setAttribute('aria-label',w.title+' · '+number(value,binding.channel,w)+' '+(binding.channel.unit||''));bar.className='widget-progress';
-        const label=document.createElement('p');label.className='widget-progress-value';decorateWidgetText(label,w);label.textContent=number(value,binding.channel,w)+' '+binding.channel.unit+' · Range '+number(w.min,binding.channel,w)+'–'+number(w.max,binding.channel,w)+(value<w.min||value>w.max?' · Outside display range':'');card.append(bar,label);
+        const label=document.createElement('p');label.className='widget-progress-value';decorateWidgetText(label,w);label.textContent=number(value,binding.channel,w)+' '+binding.channel.unit+(value<w.min||value>w.max?' · Outside display range':'');card.append(bar,label);
       }else if(w.type==='table'){
         const table=document.createElement('table');table.className='stream-history-table';const caption=document.createElement('caption');caption.textContent='Latest 10 valid saved samples';table.append(caption);const thead=document.createElement('thead'),tr=document.createElement('tr');
         for(const text of ['Recorded','Value','Quality']){const th=document.createElement('th');th.textContent=text;th.scope='col';tr.append(th);}thead.append(tr);table.append(thead);const tbody=document.createElement('tbody');
         for(const row of valid.slice(-10).reverse()){const line=document.createElement('tr'),type=binding.channel.value_type,value=streamValue(row,type);for(const text of [time(row.recorded_at),type==='boolean'?(value?'On':'Off'):type==='number'?number(value,binding.channel,w)+(binding.channel.unit?' '+binding.channel.unit:''):String(value).slice(0,2000),row.quality]){const cell=document.createElement('td');cell.textContent=text;line.append(cell);}tbody.append(line);}table.append(tbody);const wrap=document.createElement('div');wrap.className='widget-table-scroll';wrap.append(table);card.append(wrap);
       }
-      if(binding&&valid.length&&binding.channel.direction==='input'){
-        const delivery=readingDelivery(valid),last=valid.at(-1),line=document.createElement('p');
-        line.className='widget-data-updated';
-        if(delivery){
-          line.dataset.freshness=binding.device.config?.mode==='simulation'?'simulation':delivery.recent?'recent':'stored';
-          line.textContent=binding.device.config?.mode==='simulation'
-            ?'Simulated · '+time(delivery.at)
-            :['Recorded '+time(delivery.at),last.quality==='estimated'?'Estimated time':delivery.recent?'Recent':'Stored history',delivery.delay?'Uploaded '+delivery.delay+' later':''].filter(Boolean).join(' · ');
-          card.append(line);
-        }
+      if(binding?.device.config?.mode==='simulation'){
+        const badge=document.createElement('span');badge.className='sim-badge';badge.textContent='SIMULATED';head.append(badge);
       }
-      if(binding){const footer=document.createElement('div');footer.className='widget-binding';const label=document.createElement('span');const pin=pinSummary(binding.channel),shortPin=pin.split(' · ').find(part=>part.includes('wiring plan'))?.replace(' wiring plan','');
-        label.textContent=editing?[binding.device.label,binding.channel.title,pin].filter(Boolean).join(' · '):[binding.device.label,shortPin].filter(Boolean).join(' · ');footer.append(label);if(binding.device.config?.mode==='simulation'){const badge=document.createElement('span');badge.className='sim-badge';badge.textContent='SIMULATED';footer.append(badge);}card.append(footer);}
     }
     if(editing){
       const tools=document.createElement('div');tools.className='widget-tools';
