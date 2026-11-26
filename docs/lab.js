@@ -1,3 +1,4 @@
+import { openHardwareSetup } from './hardware-setup.js?v=3.0.2';
 import { createControlStreamDialog } from './control-stream-dialog.js?v=0.37.0';
 import { controlPresets } from './stream-presets.js?v=0.36.1';
 import { streamMappingLabel } from './stream-mapping.js?v=0.36.1';
@@ -7,7 +8,7 @@ import { matchingGroupDevices } from './library-model.js?v=0.36.1';
 import { createProjectLibrary } from './project-library.js?v=0.36.1';
 import { SENSOR_PRESETS, ESP32_MODULES, makeStreamDefinition, simulatedValue, streamValue, validStreamReadings } from './sensor-catalog.js?v=0.36.1';
 import { createAnalytics } from './analytics.js?v=3.0.0';
-import { createDashboard } from './dashboard.js?v=3.0.1';
+import { createDashboard } from './dashboard.js?v=3.0.2';
 import { createRules } from './rules.js?v=3.0.0';
 import { supportsUsbSensor, usbSensorBinding, sensorUsbBinding } from './usb-sensor.js?v=0.36.1';
 import { addFacts, confirmedOutput, deviceReport, inventoryDate, latestReading, loadDeviceReports, renderDeviceCard, streamFacts } from './device-inventory.js?v=3.0.0';
@@ -271,7 +272,7 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
     $('stream-select').value=channel?.id||'';$('stream-select').disabled=!channel;$('stream-pin-setup').disabled=!channel||channel.direction==='output'||pinBusy;updateRunButton();renderReadiness();
   }
   function renderReadiness(){
-    $('add-control-stream-button').disabled=!device||!getSession();show('device-readiness',!!device);if(!device)return;
+    $('add-control-stream-button').disabled=!device||!getSession();$('add-hardware-stream-button').disabled=!device||!getSession();show('device-readiness',!!device);if(!device)return;
     const direct=sensorBoard(device.board_model)?.transport==='ble_wifi',multi=sensorUsbBinding(project,device,channels),usb=supportsUsbSensor(device)||!!multi,binding=usbSensorBinding(project,device,channel);$('download-sensor-usb-binding').disabled=!multi||!getSession();
     show('usb-sensor-starter',usb);$('download-usb-binding').disabled=!binding||!getSession();
     $('usb-binding-help').textContent=multi?'Sensor binding selects '+Object.keys(multi.streams).length+' existing compatible input streams. It contains public configuration and IDs, never sign-in tokens. The original binding button remains for legacy ESP32 firmware.':binding?'This file selects your existing device and Potentiometer raw stream. It contains public configuration and record IDs, never your password or sign-in tokens.':'Choose Add stream → Potentiometer, then select that raw input to enable the binding download. Existing streams and history stay in place.';
@@ -610,6 +611,17 @@ export function createLab({ request, friendlyError, getSession, getGeneration, o
   $('clear-device-search').addEventListener('click',()=>{$('device-search').value='';$('device-filter-mode').value='all';$('device-filter-group').value='';$('device-filter-status').value='all';renderDevices();$('device-search').focus();});
   $('device-form').addEventListener('submit',saveDevice);$('stream-form').addEventListener('submit',saveStream);
   $('stream-pin-setup').addEventListener('click',openPinSetup);$('stream-pin-form').addEventListener('submit',savePinSetup);for(const id of ['stream-physical-pin','stream-virtual-pin'])$(id).addEventListener('input',pinPreview);$('stream-physical-pin').addEventListener('change',pinPreview);$('stream-pin-dialog').addEventListener('close',()=>{if(!$('stream-pin-dialog').open)pinTarget=null;});
+  let hardwareDialog=null;
+  $('add-hardware-stream-button').addEventListener('click',()=>{
+    if(!project||!getSession()||hardwareDialog?.open)return;
+    const ctx=context();
+    hardwareDialog=openHardwareSetup({devices,deviceId:device?.id,request,current:()=>current(ctx),
+      onReady:async({profile,device:target,catalog,streams})=>{
+        if(!current(ctx))return;
+        if(target.id===device?.id){channels=catalog;readings=[];renderChannels(streams[0].id);renderReadings();await loadReadings();}
+        message('lab-notice',profile==='camera'?'ESP32-CAM snapshot stream is ready.':profile+' pin streams are ready.');
+      }});
+  });
   $('add-control-stream-button').addEventListener('click',()=>createControlStream().catch(e=>message('lab-error',e.message)));
   $('device-scope').addEventListener('change',()=>{
     const selected=devices.find(row=>row.id===$('device-scope').value);

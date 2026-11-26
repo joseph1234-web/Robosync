@@ -1,11 +1,7 @@
-const profiles={
-  L293D:['1 · 1,2EN','2 · 1A','7 · 2A','10 · 3A','15 · 4A','9 · 3,4EN'],
-  L298N:['ENA','IN1','IN2','IN3','IN4','ENB']
-};
-const signals=[
-  ['ENA',25],['IN1',27],['IN2',32],['IN3',33],['IN4',23],['ENB',26]
-];
-export const motorDriver=value=>Object.hasOwn(profiles,value)?value:'L298N';
+import { motorPins } from './hardware-streams.js?v=3.0.2';
+
+const profiles=['L298N','L293D'];
+export const motorDriver=value=>profiles.includes(value)?value:'L298N';
 const download=driver=>'./downloads/RoboSynct_'+driver+'_ESP32.zip';
 
 function node(tag,text,className){
@@ -15,25 +11,27 @@ function node(tag,text,className){
   return element;
 }
 
-export function renderMotorPreview({driver='L298N',onProfileChange=()=>{},dashboard=false}={}){
+export function renderMotorPreview({driver='L298N',onProfileChange=()=>{},dashboard=false,streams=null,interactive=true}={}){
   driver=motorDriver(driver);
   const preview=node('section',undefined,'motor-preview'+(dashboard?' motor-preview-card':''));
   preview.setAttribute('aria-label','Motor drive preview');
   const header=node('div',undefined,'motor-header');
-  header.append(node('h2','Motor drive'),node('span','Simulation','motor-mode'));
+  header.append(node('h2',streams?'Controller':'Motor drive'),node('span',interactive?'Simulation':'Preview','motor-mode'));
   preview.append(header);
 
   const settings=node('div',undefined,'motor-settings');
   const profileLabel=node('label','Motor driver'),profile=node('select');
   profile.setAttribute('aria-label','Motor driver');
-  for(const name of Object.keys(profiles)){
+  for(const name of profiles){
     const option=node('option',name);option.value=name;profile.append(option);
   }
   profile.value=driver;profileLabel.append(profile);
   const speedLabel=node('label','Speed limit'),speed=node('input'),speedValue=node('output','20%');
   speed.type='range';speed.min='10';speed.max='35';speed.value='20';
   speed.setAttribute('aria-label','Speed limit');
-  speedLabel.append(speed,speedValue);settings.append(profileLabel,speedLabel);
+  speedLabel.append(speed,speedValue);
+  if(!streams)settings.append(profileLabel);
+  settings.append(speedLabel);
   preview.append(settings);
 
   const content=node('div',undefined,'motor-content');
@@ -41,21 +39,27 @@ export function renderMotorPreview({driver='L298N',onProfileChange=()=>{},dashbo
   const pad=node('div',undefined,'motor-pad');
   const state=node('p','Stopped','motor-state');
   state.setAttribute('role','status');
-  controller.append(pad,state);
+  const controllerHead=node('div',undefined,'motor-controller-heading');
+  controllerHead.append(node('span',driver,'motor-controller-profile'),state);
+  controller.append(controllerHead,pad,node('p',interactive?'Hold to move · release to stop':'Controller preview','motor-controller-hint'));
 
   const table=node('table',undefined,'motor-pins');
   table.append(node('caption','Pin streams'));
   const columns=table.createTHead().insertRow();
-  for(const name of ['Signal','Driver pin','ESP32','Level']){
+  for(const name of ['Signal',...(streams?['Virtual']:[]),'Driver pin','ESP32','Preview']){
     const th=node('th',name);th.scope='col';columns.append(th);
   }
   const body=table.createTBody();
-  const rows=signals.map(([name,gpio])=>{
-    const row=body.insertRow(),heading=node('th',name);
+  const rows=motorPins(driver).map(({signal,gpio,key})=>{
+    const row=body.insertRow(),heading=node('th',signal);
     heading.scope='row';row.append(heading);
+    if(streams){
+      const virtual=row.insertCell();
+      virtual.textContent=streams.find(item=>item.channel_key===key)?.config?.virtual_pin||'—';
+    }
     const pin=row.insertCell(),physical=row.insertCell(),value=row.insertCell();
     physical.textContent='GPIO'+gpio;
-    row.dataset.signal=name;
+    row.dataset.signal=signal;
     return {pin,value};
   });
   content.append(controller,table);preview.append(content);
@@ -74,18 +78,22 @@ export function renderMotorPreview({driver='L298N',onProfileChange=()=>{},dashbo
   }
   function stop(){
     if(pressed)pressed.removeAttribute('data-held');
+    preview.removeAttribute('data-driving');
     pressed=null;pointer=null;a=b=0;state.textContent='Stopped';levels();
   }
   function start(button,name,left,right,pointerId){
     if(pressed){stop();return;}
-    pressed=button;pointer=pointerId;button.dataset.held='';
+    pressed=button;pointer=pointerId;button.dataset.held='';preview.dataset.driving='';
     a=left*Number(speed.value);b=right*Number(speed.value);state.textContent=name;levels();
   }
   for(const [id,label,text,left,right] of [
     ['forward','Forward','↑',1,1],['left','Left','←',-1,1],['right','Right','→',1,-1],['reverse','Reverse','↓',-1,-1]
   ]){
-    const button=node('button',text);
+    const button=node('button');
+    const arrow=node('span',text,'motor-arrow');arrow.setAttribute('aria-hidden','true');
+    button.append(arrow,node('span',label,'motor-direction-label'));
     button.type='button';button.dataset.direction=id;button.setAttribute('aria-label','Hold '+label.toLowerCase());
+    button.disabled=!interactive;
     button.addEventListener('pointerdown',event=>{
       if(event.button!==0)return;
       event.preventDefault();
@@ -113,10 +121,13 @@ export function renderMotorPreview({driver='L298N',onProfileChange=()=>{},dashbo
     pad.append(button);
   }
   const halt=node('button','Stop');
-  halt.type='button';halt.className='motor-stop';halt.addEventListener('click',stop);pad.append(halt);
+  halt.type='button';halt.className='motor-stop';halt.disabled=!interactive;halt.addEventListener('click',stop);pad.append(halt);
+  speed.disabled=!interactive;
   function changeProfile(){
     stop();
-    rows.forEach(({pin},index)=>{pin.textContent=profiles[driver][index];});
+    controllerHead.firstChild.textContent=driver;
+    const pins=motorPins(driver);
+    rows.forEach(({pin},index)=>{pin.textContent=pins[index].pin;});
     firmware.href=download(driver);
     if(dashboard)setup.href='./motor-drive.html?driver='+driver;
   }

@@ -1,4 +1,4 @@
-import { renderMotorPreview } from './motor-preview.js?v=3.0.1';
+import { renderMotorPreview } from './motor-preview.js?v=3.0.2';
 
 const params=new URLSearchParams(location.search);
 const preview=renderMotorPreview({driver:params.get('driver')});

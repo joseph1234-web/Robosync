@@ -6,7 +6,7 @@ import { createPairing } from './pairing.js?v=3.0.0';
 import { createThemes } from './themes.js?v=0.36.1';
 import { createAuthAccess } from './auth-access.js?v=0.36.1';
 import { createDeletion } from './deletion.js?v=0.36.1';
-import { createLab } from './lab.js?v=3.0.1';
+import { createLab } from './lab.js?v=3.0.2';
 import { createOverview } from './workspace-overview.js?v=3.0.0';
 // Public project configuration. Elevated keys and passwords do not belong here.
 const SESSION_KEY = 'robosynct.session.v1';

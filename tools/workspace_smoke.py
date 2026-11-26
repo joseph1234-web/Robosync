@@ -4,6 +4,7 @@ Every HTTP request is intercepted before navigation. All writes go to a new
 in-memory fixture; the test cannot sign in to Supabase or send board commands.
 """
 import argparse
+from base64 import b64decode
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
@@ -18,6 +19,12 @@ from playwright.sync_api import expect, sync_playwright
 DOCS = Path(__file__).resolve().parents[1] / 'docs'
 SITE = 'https://workspace.example.invalid/Robosync/'
 BACKEND = re.search(r"SUPABASE_URL\s*=\s*'([^']+)'", (DOCS / 'public-config.js').read_text())[1]
+JPEG = b64decode(
+    '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/'
+    '2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAEAAQDASIAAhEBAxEB/'
+    '8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABAb/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/'
+    '9oADAMBAAIRAxEAPwCJAOSD/9k='
+)
 
 
 def uid(i):
@@ -29,7 +36,7 @@ def stamp(seconds=0):
 
 
 class Workspace:
-    def __init__(self):
+    def __init__(self, hardware=False):
         self.users = {f'{n}@example.invalid': {'id': uid(i), 'email': f'{n}@example.invalid'}
                       for i, n in enumerate(['student', 'visitor'], 1)}
         self.projects = [{'id': uid(10 + i), 'owner_id': user['id'], 'name': name,
@@ -39,6 +46,12 @@ class Workspace:
         self.device = {'id': uid(20), 'project_id': self.project, 'label': 'Greenhouse ESP32',
                        'board_model': 'esp32-devkit-v1', 'transport': 'wifi', 'created_at': stamp(3600),
                        'last_seen_at': stamp(4), 'config': {'mode': 'hardware'}}
+        self.hardware_devices = [
+            {**self.device, 'id': uid(21 + i), 'label': label, 'board_model': board, 'last_seen_at': None}
+            for i, (label, board) in enumerate([('Test camera','esp32-cam-ai-thinker'),
+                ('L298N board','esp32-devkit-v1'),('L293D board','esp32-devkit-v1')])
+        ] if hardware else []
+        self.hardware_writes = []
         self.channels, self.telemetry, widgets = [], [], []
         for k, (title, key, kind, widget, vpin, gpio, unit, value) in enumerate([
                 ('Temperature', 'temperature', 'number', 'value', 1, 4, '°C', 27.4),
@@ -105,7 +118,7 @@ class Workspace:
             return route.fulfill(status=204, headers={
                 'access-control-allow-origin': SITE.split('/Robosync/')[0],
                 'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS',
-                'access-control-allow-headers': 'apikey, authorization, content-type, prefer, accept'
+                'access-control-allow-headers': 'apikey, authorization, content-type, prefer, accept, x-rs-view'
             })
         if path == '/auth/v1/settings':
             return response({'external': {'email': True}})
@@ -121,6 +134,25 @@ class Workspace:
             return response({})
         table = path.removeprefix('/rest/v1/')
         owner = user['id'] == self.projects[0]['owner_id']
+        if table == 'rpc/rs_studio_write' and owner and method == 'POST':
+            assert data['p_kind'] == 'stream' and data['p_base'] == 0
+            assert data['p_parent'] in {device['id'] for device in self.hardware_devices}
+            row = {**data['p_payload'], 'id': data['p_id'], 'device_id': data['p_parent']}
+            assert row['direction'] == 'input' and row['config']['io']['kind'] in {'status','media'}
+            assert not any(ch['device_id'] == row['device_id'] and ch['channel_key'] == row['channel_key'] for ch in self.channels)
+            self.channels.append(row)
+            self.hardware_writes.append(row)
+            return response(row)
+        if table == 'rpc/rs_io_device_status' and owner and data.get('p_device') in {d['id'] for d in self.hardware_devices}:
+            return response({'version': 1, 'device_id': data['p_device']})
+        if owner and self.hardware_devices and table in {'rpc/rs_media_view','/functions/v1/rs-media'}:
+            media = next(row['config']['io']['media_id'] for row in self.hardware_writes if row['config']['io']['kind']=='media')
+            if table == 'rpc/rs_media_view':
+                assert data['p_media'] == media
+                return response({'frame_id':uid(777),'viewer_token':'fixture-view','received_at':stamp()})
+            assert params['media'] == media and request.headers.get('x-rs-view') == 'fixture-view'
+            return route.fulfill(status=200,body=JPEG,content_type='image/jpeg',
+                                 headers={'access-control-allow-origin': SITE.split('/Robosync/')[0]})
         if table == 'rpc/rs_pairing_connections' and owner and data.get('p_project_id') == self.project:
             return response([{'id':uid(201),'device_label':'Test phone','can_arrange':True,
                               'created_at':stamp(3600),'expires_at':stamp(-3600),'last_used_at':stamp(60),'revoked_at':None}])
@@ -166,7 +198,7 @@ class Workspace:
             self.violations.append((method, table))
             return response({'message': 'Unexpected mutation or RPC in browser test'}, 405)
         tables = {'profiles': [{'id': user['id']}], 'projects': [p for p in self.projects if p['owner_id'] == user['id']],
-                  'devices': [self.device] if owner else [], 'channels': self.channels if owner else [],
+                  'devices': [self.device,*self.hardware_devices] if owner else [], 'channels': self.channels if owner else [],
                   'widgets': [self.record] if owner else [], 'telemetry': self.telemetry if owner else [],
                   'events': self.events if owner else [], 'rules': self.rules if owner else []}
         rows = tables.get(table, [])
@@ -335,6 +367,8 @@ def exercise(browser, screenshot_dir=None):
     toggle=relay.get_by_role('switch',name='Relay',exact=True)
     expect(relay.locator('.output-toggle')).to_have_count(1)
     expect(relay.locator('.output-values')).to_have_count(0)
+    expect(rgb.locator('.output-values')).to_have_count(0)
+    expect(page.locator('#dashboard-canvas .widget-data-updated, #dashboard-canvas .widget-binding')).to_have_count(0)
     fixture.command_mode='applied'
     toggle.click()
     expect(toggle).to_have_attribute('aria-checked','true')
@@ -356,14 +390,14 @@ def exercise(browser, screenshot_dir=None):
     assert len(fixture.command_posts)==2
     page.mouse.up()
     expect(rgb.locator('.command-result')).to_have_text('Applied and acknowledged')
-    expect(rgb.locator('.output-values dd').last).to_have_text('#FF0000')
+    expect(rgb.locator('.rgb-selection output')).to_have_text('#FF0000')
     assert fixture.command_posts[2]['p_value']==[255,0,0]
     rgb.get_by_role('slider',name='Brightness',exact=True).press('Home')
-    expect(rgb.locator('.output-values dd').last).to_have_text('#000000')
+    expect(rgb.locator('.rgb-selection output')).to_have_text('#000000')
     assert fixture.command_posts[3]['p_value']==[0,0,0]
     expect(rgb.locator('.rgb-selection output')).to_have_text('#000000')
     rgb.get_by_role('slider',name='Brightness',exact=True).press('End')
-    expect(rgb.locator('.output-values dd').last).to_have_text('#FF0000')
+    expect(rgb.locator('.rgb-selection output')).to_have_text('#FF0000')
     assert fixture.command_posts[4]['p_value']==[255,0,0]
     assert len(fixture.command_posts)==5 and not fixture.violations
     page.locator('#dashboard-options summary').click()
@@ -430,6 +464,57 @@ def exercise(browser, screenshot_dir=None):
     mobile.close()
 
 
+def exercise_hardware(browser, screenshot_dir=None):
+    fixture=Workspace(hardware=True)
+    context=browser.new_context(viewport={'width': 390,'height': 844}, is_mobile=True,
+                                has_touch=True, reduced_motion='reduce', service_workers='block')
+    context.route('**/*',fixture.handle)
+    page=context.new_page()
+    errors=[]
+    page.on('pageerror',lambda error: errors.append(str(error)))
+    page.set_default_timeout(10000)
+    page.goto(SITE)
+    login(page,'student')
+    page.locator('#console-menu').click()
+    dashboard(page)
+    for profile, index in [('camera',0),('L298N',1),('L293D',2),('L293D',2)]:
+        page.locator('#dashboard-add-hardware').click()
+        dialog=page.get_by_role('dialog',name='Add hardware widget')
+        dialog.get_by_role('combobox',name='Hardware',exact=True).select_option(profile)
+        dialog.get_by_role('combobox',name='Device',exact=True).select_option(fixture.hardware_devices[index]['id'])
+        dialog.get_by_role('button',name='Add streams and widget').click()
+        expect(dialog).to_have_count(0)
+    assert len(fixture.hardware_writes)==13
+    page.locator('#dashboard-save').click()
+    expect(page.locator('#dashboard-save-state')).to_contain_text('Saved')
+    assert len(fixture.record['config']['widgets'])==8
+    page.reload()
+    expect(page.locator('#workspace-screen')).to_be_visible()
+    page.locator('#console-menu').click()
+    dashboard(page)
+    motor=page.locator('#dashboard-canvas article').filter(has=page.get_by_role('heading',name='L293D motor drive'))
+    expect(motor.locator('[data-signal=ENA]')).to_contain_text('V20')
+    expect(motor.locator('[data-signal=IN4]')).to_contain_text('15 · 4A')
+    arrow=motor.get_by_role('button',name='Hold forward')
+    arrow.focus()
+    page.keyboard.down('Space')
+    expect(motor.locator('[data-signal=IN1] td').last).to_have_text('HIGH')
+    page.keyboard.up('Space')
+    expect(motor.locator('[data-signal=ENA] td').last).to_have_text('0%')
+    camera=page.locator('#dashboard-canvas article').filter(has=page.get_by_role('heading',name='ESP32-CAM'))
+    camera.get_by_role('button',name='Open protected snapshot').click()
+    expect(camera.get_by_role('img',name='ESP32-CAM · protected JPEG')).to_be_visible()
+    assert camera.locator('img').evaluate('(image) => image.complete && image.naturalWidth === 4')
+    camera.get_by_role('button',name='Close preview').click()
+    expect(camera.locator('img')).to_be_hidden()
+    assert not fixture.command_posts and not fixture.violations and not errors, (errors,fixture.violations)
+    assert page.evaluate('document.documentElement.scrollWidth === window.innerWidth')
+    if screenshot_dir:
+        motor.scroll_into_view_if_needed()
+        motor.screenshot(path=screenshot_dir/'RoboSynct_Motor_Widget_Phone.png')
+    context.close()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--chromium', default=which('chromium') or which('google-chrome'), help='Chromium executable; defaults to system or Playwright installation')
@@ -441,6 +526,7 @@ if __name__ == '__main__':
         browser = pw.chromium.launch(executable_path=args.chromium)
         try:
             exercise(browser,args.screenshots)
+            exercise_hardware(browser,args.screenshots)
         finally:
             browser.close()
-    print('Passed browser smoke: account isolation, desktop and phone UI, board setup, layout edits, switch acknowledgment and expiry, RGB release and brightness, and motor pin preview. All cloud and board replies were simulated.')
+    print('Passed browser smoke: account isolation, desktop and phone UI, layout edits, switch and RGB, scoped hardware streams, saved widgets, protected JPEG and motor pin preview. Cloud and board replies were simulated.')

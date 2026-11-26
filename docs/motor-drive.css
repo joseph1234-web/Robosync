@@ -17,18 +17,28 @@
 .motor-settings select{grid-column:1/-1;max-width:100%;min-height:44px}
 .motor-settings input[type=range]{grid-column:1/-1;grid-row:2;min-width:0;min-height:44px;width:100%;margin:0;padding:0;accent-color:var(--teal)}
 .motor-settings output{font-variant-numeric:tabular-nums}
-.motor-content{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);align-items:center;gap:20px}
-.motor-controller{display:grid;justify-items:center;align-content:center;gap:10px;padding:14px;border-radius:14px;background:var(--soft)}
-.motor-pad{width:min(100%,253px);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:". forward ." "left stop right" ". reverse .";gap:7px}
+.motor-content{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);align-items:center;gap:20px}
+.motor-controller{display:grid;justify-items:center;align-content:center;gap:14px;padding:16px;border:1px solid #29434e;border-radius:18px;background:radial-gradient(ellipse at top,#183b45 0%,#101c25 76%);color:#e4f2f4}
+.motor-controller-heading{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.motor-controller-profile{font-size:.88rem;font-weight:750;letter-spacing:.06em}
+.motor-pad{width:min(100%,274px);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-areas:". forward ." "left stop right" ". reverse .";gap:7px}
 .motor-pad [data-direction=forward]{grid-area:forward}
 .motor-pad [data-direction=left]{grid-area:left}
 .motor-pad [data-direction=right]{grid-area:right}
 .motor-pad [data-direction=reverse]{grid-area:reverse}
-.motor-pad .motor-stop{grid-area:stop;color:var(--danger);font-size:.9rem}
-.motor-pad button{display:grid;place-items:center;min-height:52px;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--teal);font:700 1.4rem/1 system-ui,sans-serif;touch-action:none;user-select:none;cursor:pointer}
-.motor-pad button:hover,.motor-pad button[data-held]{border-color:var(--teal);background:var(--accent-soft)}
+.motor-pad button{display:grid;place-content:center;justify-items:center;gap:3px;min-height:60px;padding:4px;border:1px solid #3b5b65;border-radius:13px;background:#1b303b;color:#d9fcf8;font:700 1rem/1 system-ui,sans-serif;touch-action:none;user-select:none;cursor:pointer;transition:background .14s,border-color .14s}
+.motor-pad button:is(:hover,[data-held]):enabled{border-color:#92f0da;background:#225a5b}
+.motor-pad button[data-held]{box-shadow:0 0 0 2px #76e3cd33 inset}
+.motor-pad button:disabled{opacity:.55;cursor:default}
+.motor-arrow{font-size:1.5rem;line-height:1}
+.motor-direction-label{font-size:.67rem;font-weight:650}
+.motor-pad .motor-stop{grid-area:stop;border-color:#b35d60;background:#412b33;color:#ffd0ce;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+.motor-pad .motor-stop:hover:enabled{border-color:#ffd0ce;background:#603740}
 .motor-preview :focus-visible{outline:2px solid var(--teal);outline-offset:3px}
-.motor-state{font-size:.88rem;color:var(--muted);margin:0}
+.motor-controller :focus-visible{outline-color:#92f0da}
+.motor-state{font-size:.78rem;color:#d4e4e7;margin:0;padding:5px 8px;border-radius:999px;background:#ffffff12}
+.motor-preview[data-driving] .motor-state{background:#83edd6;color:#10292b}
+.motor-controller-hint{font-size:.76rem;color:#b8cbd0;margin:0;text-align:center}
 .motor-pins{width:100%;border-collapse:collapse;font-size:.83rem;color:var(--ink);font-variant-numeric:tabular-nums}
 .motor-pins caption{text-align:start;font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:8px}
 .motor-pins :is(td,th){padding:8px 5px;text-align:start;border-bottom:1px solid var(--line)}
@@ -36,11 +46,27 @@
 .motor-pins td:last-child{color:var(--teal);font-weight:650}
 .motor-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:18px}
 .motor-actions .button{min-height:44px}
+.dashboard-widget .motor-preview-card{margin:0;padding:0;border:0;background:transparent}
+.dashboard-widget .motor-settings{grid-template-columns:minmax(0,1fr)}
+.hardware-setup form{display:grid;gap:12px}
+.hardware-setup h2,.hardware-setup p{margin:0}
+.hardware-setup label{display:grid;gap:6px}
+.hardware-setup-status{min-height:1.4em}
+.hardware-setup .form-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.camera-feed{display:grid;gap:10px}
+.camera-feed-window{display:grid;place-items:center;overflow:hidden;aspect-ratio:16/9;border:1px solid #34515c;border-radius:14px;background:radial-gradient(ellipse at center,#21444c,#111d26 75%);color:#c2dbdf}
+.camera-feed-window img{width:100%;height:100%;object-fit:contain}
+.camera-feed-window [hidden]{display:none}
+.camera-feed-placeholder{font-size:.86rem;font-weight:650}
+.camera-feed-status{margin:0;color:var(--muted);font-size:.85rem}
+.camera-feed button{justify-self:start}
 .motor-setup{margin-top:20px}
 .motor-setup ol{padding-inline-start:20px;color:var(--ink);line-height:1.6}
 .motor-setup li+li{margin-top:7px}
 @media(max-width:610px){
   .motor-content{grid-template-columns:minmax(0,1fr)}
   .motor-page{padding-inline:16px}
-  .motor-controller{padding:9px}
+  .motor-controller{padding:12px}
+  .motor-pins :is(th,td){padding-inline:3px}
 }
+@media(prefers-reduced-motion:reduce){.motor-pad button{transition:none}}

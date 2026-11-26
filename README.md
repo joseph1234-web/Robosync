@@ -24,9 +24,9 @@ The ESP32 continues to upload directly to its configured Supabase endpoint. The 
 
 The public client configuration in `docs/public-config.js` contains the existing Supabase URL and publishable key. Keep private upload and control tokens, router passwords, account credentials and signing files outside this repository. Original release downloads and Android pairing QR codes use the existing RoboSynct host. Keep that site available for those links.
 
-## Optional protected camera snapshots
+## Protected camera snapshots
 
-The existing rs-media service permits the original website origin. To enable protected snapshots from Pages, the Supabase project operator can set the Edge Function environment variable `RS_PAGES_ORIGIN` to the exact GitHub Pages HTTPS origin, such as `https://joseph1234-web.github.io`, and deploy the included `supabase/functions/rs-media` to the same project using the existing function configuration. The variable contains only the origin, without a trailing slash or repository path. Browser origins cover all repositories hosted at the same account hostname, so use an account that serves trusted sites. Preserve the existing service settings. The handler still authorizes each protected request. This optional deployment is separate from publishing the static website.
+The `rs-media` function supports the original website and `https://joseph1234-web.github.io`. Signed-in owners can view the private snapshots after enrolling their ESP32-CAM. For a different GitHub Pages account, set `RS_PAGES_ORIGIN` to its exact HTTPS origin without the repository path or trailing slash, then deploy the included `supabase/functions/rs-media` with the existing function settings.
 
 ## Local checks
 
