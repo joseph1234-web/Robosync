@@ -1,12 +1,12 @@
 # RoboSynct Web V3
 
-## Web 3.0.2 and Android 1.25.0
+## Web 3.0.3 and Android 1.26.0
 
 In Dashboard, choose **Add hardware widget** and select an ESP32-CAM or an ESP32 DevKit V1 for L298N or L293D. The setup reuses a compatible camera stream or creates private snapshot metadata. Motor setup saves six read-only pin streams with available virtual labels. Save the dashboard to sync the widget to Android. Datastreams also offers **Add hardware streams**.
 
 The motor controller preview shows how each direction changes the six signals. Open the controller on Android to pair a board, arm it, and hold a direction to drive. Release or tap **Stop** to stop. Download the matching firmware from [Motor setup](docs/motor-drive.html). For camera snapshots, enroll the ESP32-CAM in the existing device connections workflow.
 
-Dashboard cards focus on readings, charts and controls. Sensor and wiring details are available in Datastreams. The signed Android upgrade uses version code 40.
+Open Dashboard → Edit for Add widget, Save, and per-card controls. The Edit options also provide Undo, and the phone preview provides phone-specific layout settings. Cards grow to fit their contents. Saved heights set the minimum. Sensor and wiring details are in Datastreams. The signed Android upgrade uses version code 41.
 
 The workspace opens on an Overview with project switching, recent alerts, device status, the latest confirmed upload, and the last reported queue size. Devices, Datastreams, Events & Logs, Automations, Dashboard Studio, and Phone Sync have dedicated entry points.
 

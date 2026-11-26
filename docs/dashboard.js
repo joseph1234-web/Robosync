@@ -12,7 +12,7 @@ import { supportsValueText,textSizeChoices,widgetTextPlan,fitWidgetText,gaugeTex
 import { renderWidgetScene } from './widget-visual.js?v=0.37.0';
 import { NUMERIC_WIDGETS,iconChoices,widgetSettingValues,applyWidgetSettings,widgetIconId,widgetNumber } from './widget-settings.js?v=0.37.0';
 import { phoneLayout,phoneOrder } from './phone-layout.js?v=0.37.0';
-import { editPhoneLayout,mountPhoneLayoutEditor } from './dashboard-phone-editor.js?v=0.37.0';
+import { editPhoneLayout,mountPhoneLayoutEditor } from './dashboard-phone-editor.js?v=3.0.3';
 import { phonePreviewCard } from './phone-preview.js?v=0.37.0';
 import { streamMappingLabel } from './stream-mapping.js?v=0.36.1';
 import { widgetLibraryInventory,filterWidgetLibrary,WIDGET_LIBRARY_GROUPS,librarySeriesOrder,widgetSupportsStream,widgetLibraryPreview } from './widget-library.js?v=3.0.0';
@@ -210,7 +210,12 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     $('dashboard-add').disabled=saving||widgets.length>=maxWidgets;
     $('dashboard-first-widget').disabled=!loaded||loadFailed||saving;
     $('dashboard-save').disabled=!dirty||saving||loadFailed;
-    $('dashboard-save').textContent=saving?'Saving…':'Save dashboard';
+    $('dashboard-save').textContent=saving?'Saving…':'Save';
+    $('dashboard-discard').textContent=dirty?'Discard changes':'Exit editor';
+    if(!editing){
+      $('dashboard-edit-extras')?.removeAttribute('open');
+      $('widget-palette-panel').removeAttribute('open');
+    }
     $('dashboard-undo').disabled=!history.length||saving;
     $('dashboard-discard').disabled=saving;
     $('dashboard-reload').disabled=dirty||saving;
@@ -422,10 +427,23 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     }
     if(editing){
       const tools=document.createElement('div');tools.className='widget-tools';
-      const button=(label,aria,action,disabled=false)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.setAttribute('aria-label',aria);b.disabled=disabled||saving;b.addEventListener('click',action);tools.append(b);return b;};
-      button('↑','Move '+w.title+' earlier',()=>move(w.id,index-1),index===0);button('↓','Move '+w.title+' later',()=>move(w.id,index+1),index===widgets.length-1);
-      button('Edit','Edit '+w.title,()=>editWidget(w.id));button('Copy','Duplicate '+w.title,()=>{if(widgets.length>=maxWidgets)return;commit([...widgets,{...clone(w),id:crypto.randomUUID(),title:(w.title+' copy').slice(0,120)}]);},widgets.length>=maxWidgets);
-      button('Remove','Remove '+w.title,()=>commit(widgets.filter(row=>row.id!==w.id))).className='widget-remove';card.append(tools);
+      const button=(label,aria,action,disabled=false,parent=tools)=>{
+        const b=document.createElement('button');b.type='button';b.textContent=label;
+        b.setAttribute('aria-label',aria);b.disabled=disabled||saving;
+        b.addEventListener('click',action);parent.append(b);return b;
+      };
+      button('Edit','Edit '+w.title,()=>editWidget(w.id));
+      button('↑','Move '+w.title+' earlier',()=>move(w.id,index-1),index===0);
+      button('↓','Move '+w.title+' later',()=>move(w.id,index+1),index===widgets.length-1);
+      const menu=document.createElement('details');menu.className='widget-actions';
+      const summary=document.createElement('summary');summary.textContent='⋯';
+      summary.setAttribute('aria-label','More options for '+w.title);
+      const actions=document.createElement('div');actions.className='widget-action-list';
+      button('Copy','Duplicate '+w.title,()=>{
+        if(widgets.length<maxWidgets)commit([...widgets,{...clone(w),id:crypto.randomUUID(),title:(w.title+' copy').slice(0,120)}]);
+      },widgets.length>=maxWidgets,actions);
+      button('Remove','Remove '+w.title,()=>commit(widgets.filter(row=>row.id!==w.id)),false,actions).className='widget-remove';
+      menu.append(summary,actions);tools.append(menu);card.append(tools);
       head.hidden=false;const grip=document.createElement('button');grip.type='button';grip.className='widget-drag-handle';grip.textContent='⠿';grip.setAttribute('aria-label','Drag '+w.title+' to move. Use the move buttons for keyboard reordering.');grip.disabled=saving;grip.addEventListener('pointerdown',event=>gestures.beginMove(event,w.id,w.title));head.append(grip);
       const resize=document.createElement('button');resize.type='button';resize.className='widget-resize-handle';resize.textContent='◢';resize.disabled=saving;resize.setAttribute('aria-label','Resize '+w.title+'. Arrow left or right adjusts width; up or down adjusts height.');resize.addEventListener('pointerdown',event=>gestures.beginResize(event,w.id,card,dimensions));
       resize.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home'].includes(event.key)||saving)return;event.preventDefault();const current=w.size||{columns:w.width==='full'?12:6,height:0};if(event.key==='Home'){resizeWidget(w.id,{columns:6,height:0});return;}const columns=Math.max(3,Math.min(12,current.columns+(event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0))),height=['ArrowUp','ArrowDown'].includes(event.key)?Math.max(160,Math.min(960,(current.height||Math.round(card.getBoundingClientRect().height/20)*20)+(event.key==='ArrowDown'?20:-20))):current.height;resizeWidget(w.id,{columns,height});});
@@ -434,7 +452,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     }
     return card;
   }
-  function resizeWidget(id,size){if(!editing||saving||!widgets.some(w=>w.id===id))return;const clean=normalizeWidgetSize(size);commit(widgets.map(w=>w.id===id?{...w,size:clean,width:clean.columns===12?'full':'half'}:w));$('dashboard-layout-status').textContent='Widget resized to '+clean.columns+' of 12 columns'+(clean.height?', '+clean.height+' pixels high.':', automatic height.');const card=[...$('dashboard-canvas').children].find(c=>c.getAttribute('data-widget-id')===id);card?.querySelector?.('.widget-resize-handle')?.focus();}
+  function resizeWidget(id,size){if(!editing||saving||!widgets.some(w=>w.id===id))return;const clean=normalizeWidgetSize(size);commit(widgets.map(w=>w.id===id?{...w,size:clean,width:clean.columns===12?'full':'half'}:w));$('dashboard-layout-status').textContent='Widget resized to '+clean.columns+' of 12 columns'+(clean.height?', '+clean.height+' pixels minimum height.':', automatic height.');const card=[...$('dashboard-canvas').children].find(c=>c.getAttribute('data-widget-id')===id);card?.querySelector?.('.widget-resize-handle')?.focus();}
   function move(id,to){to=Math.max(0,Math.min(widgets.length-1,to));const from=widgets.findIndex(w=>w.id===id);if(from<0||to<0||to>=widgets.length||from===to)return;const next=clone(widgets),[item]=next.splice(from,1);next.splice(to,0,item);commit(next);}
   async function readRecord(){return rows(await request('/rest/v1/widgets?select=id,project_id,widget_type,title,config,revision&id=eq.'+encodeURIComponent(project.id)+'&project_id=eq.'+encodeURIComponent(project.id),{authenticated:true}))[0]||null;}
   async function loadLayout(){
@@ -571,7 +589,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     let normalized;try{applyWidgetSettings(next,{...textFormValues(),icon:$('widget-icon').value,precision:$('widget-precision').value,zeros:$('widget-zeros').checked},original||{});applyBehavior(next,readBehavior(),channels,widgets);normalized=cleanWidget(next);}catch(err){message('widget-error',err.message);return;}const result=editId?widgets.map(w=>w.id===editId?normalized:w):[...widgets];if(!editId)result.splice(insertAt===null?result.length:Math.min(insertAt,result.length),0,normalized);if(result.length>maxWidgets||new Set(result.flatMap(w=>behaviorRefs(w))).size>24){message('widget-error','Keep at most 24 widgets and 24 distinct bound streams for the compatible offline dashboard.');return;}commit(result);insertAt=null;$('widget-dialog').close();
     if(!unbound.includes(type)&&!datasets.has(next.channel_id))await refreshData();
   }
-  function finishSaved(parsed){revision=parsed.revision;layoutExtras=clone(parsed.extras);savedExtras=clone(parsed.extras);savedWidgets=clone(parsed.widgets);widgets=clone(parsed.widgets);dashboardTheme=savedTheme=parsed.theme;dirty=false;editing=false;history=[];pendingSave=null;message('dashboard-error','');message('dashboard-notice','Dashboard saved to Supabase. You can reload the page and reopen it.');render();}
+  function finishSaved(parsed){revision=parsed.revision;layoutExtras=clone(parsed.extras);savedExtras=clone(parsed.extras);savedWidgets=clone(parsed.widgets);widgets=clone(parsed.widgets);dashboardTheme=savedTheme=parsed.theme;dirty=false;editing=false;history=[];pendingSave=null;message('dashboard-error','');message('dashboard-notice','Dashboard saved.');render();}
   async function save(){
     if(!dirty||saving||!loaded||loadFailed||!project||gestures.isActive())return;
     saving=true;const ctx=context();message('dashboard-error','');render();
@@ -581,7 +599,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
         const unchanged=layoutSignature()===pendingSave.signature;revision=fresh.revision;savedWidgets=clone(fresh.widgets);savedExtras=clone(fresh.extras);savedTheme=fresh.theme;pendingSave=null;dirty=layoutSignature()!==layoutSignature(savedWidgets,savedTheme,savedExtras);
         if(unchanged){finishSaved(fresh);return;}
       }
-      if(fresh.revision!==revision)throw error('The saved dashboard changed in another session. Your draft is still here. Discard changes, then reload the saved layout before editing again.','DASHBOARD_CHANGED');
+      if(fresh.revision!==revision)throw error('Dashboard updated in another session. Your draft is still open. To load the update, discard your changes and reload the dashboard.','DASHBOARD_CHANGED');
       const snapshot=widgets.map(cleanWidget),sig=layoutSignature(snapshot,dashboardTheme);
       if(!pendingSave||pendingSave.signature!==sig||pendingSave.baseRevision!==revision)pendingSave={token:crypto.randomUUID(),signature:sig,baseRevision:revision,snapshot:clone(snapshot),theme:THEME_IDS.includes(dashboardTheme)?dashboardTheme:websiteColors()};
       const job=pendingSave;
@@ -636,6 +654,9 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(autoTimer);autoVersion++;clearTimeout(syncTimer);syncVersion++;}else{queueAuto();queueLayoutSync();}});addEventListener('pagehide',deactivate);
   $('widget-create-control-stream').addEventListener('click',()=>addControlStream($('widget-type').value,$('widget-device').value).catch(e=>message('widget-error',e.message)));
   $('widget-device').addEventListener('change',()=>{streamOptions();formFields();});$('widget-channel').addEventListener('change',()=>{streamOptions($('widget-channel').value);formFields();});
+  $('dashboard-edit-extras')?.addEventListener('click',event=>{
+    if(event.target.closest('button'))$('dashboard-edit-extras').open=false;
+  });
   $('dashboard-save').addEventListener('click',save);$('dashboard-discard').addEventListener('click',discard);
   $('dashboard-undo').addEventListener('click',()=>{if(!history.length||saving)return;const prior=history.pop();widgets=prior.widgets;dashboardTheme=prior.theme;layoutExtras=clone(prior.extras||savedExtras);dirty=layoutSignature()!==layoutSignature(savedWidgets,savedTheme,savedExtras);render();});
   $('dashboard-refresh').addEventListener('click',refreshData);
