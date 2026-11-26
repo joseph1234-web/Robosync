@@ -18,7 +18,6 @@
 .widget-data-updated[data-freshness="recent"] { color: var(--widget-accent,var(--teal)); }
 .workspace .dashboard-widget-heading h3 { font-size: .95rem; }
 .workspace .dashboard-widget .widget-binding { font-size: .75rem; }
-.workspace .dashboard-widget.sized-widget { scrollbar-width: thin; }
 .workspace .dashboard-widget .widget-no-data { font-size: .875rem; }
 .workspace .dashboard-widget:not(.editable) .widget-type-tag { display: none; }
 .widget-library-categories { gap: 8px; }

@@ -78,7 +78,7 @@ class Workspace:
                                            'value_text': None})
             widgets.append({'id': uid(50 + k), 'type': widget, 'title': title, 'width': 'half',
                             'device_id': self.device['id'], 'channel_id': channel['id'],
-                            'aggregation': 'latest', 'size':{'columns': 6 if output else 4,'height':0}, **({'min': 0, 'max': 100} if widget == 'progress' else {})})
+                            'aggregation': 'latest', 'size':{'columns': 6 if output else 4,'height':160 if kind == 'rgb' else 0}, **({'min': 0, 'max': 100} if widget == 'progress' else {})})
         self.record = {'id': self.project, 'project_id': self.project, 'widget_type': 'note',
                        'title': 'Project dashboard', 'revision': 1,
                        'config': {'kind': 'dashboard_layout', 'schema_version': 3, 'widgets': widgets,
@@ -237,6 +237,15 @@ def dashboard(page):
     expect(page.locator('#dashboard-edit')).to_be_enabled()
 
 
+def assert_card_fits(card):
+    assert card.evaluate('''card => {
+        const style = getComputedStyle(card);
+        return style.overflowY === 'visible' && card.scrollHeight <= card.clientHeight + 1
+            && card.scrollWidth <= card.clientWidth + 1
+            && card.clientHeight > Number.parseFloat(style.minHeight);
+    }''')
+
+
 def exercise(browser, screenshot_dir=None):
     fixture = Workspace()
     context = browser.new_context(viewport={'width': 1440, 'height': 960}, reduced_motion='reduce', service_workers='block', accept_downloads=True)
@@ -314,7 +323,10 @@ def exercise(browser, screenshot_dir=None):
     expect(canvas.get_by_role('slider', name='Brightness', exact=True)).to_be_enabled()
     expect(canvas.get_by_role('button', name='Apply RGB')).to_have_count(0)
     expect(canvas.get_by_role('slider', name='Red', exact=True)).to_have_count(0)
+    assert_card_fits(canvas.locator('article[data-widget-kind=rgb]'))
     page.locator('#dashboard-edit').click()
+    expect(page.locator('#widget-palette-panel')).not_to_have_attribute('open', '')
+    page.locator('#dashboard-edit-extras summary').click()
     page.locator('#dashboard-sections').click()
     page.get_by_role('textbox',name='New section name').fill('Lab space')
     page.get_by_role('button',name='Add section',exact=True).click()
@@ -352,8 +364,10 @@ def exercise(browser, screenshot_dir=None):
     page.get_by_role('tab',name='All',exact=True).click()
     expect(canvas).to_contain_text('Temperature')
     page.locator('#dashboard-edit').click()
+    canvas.locator('summary[aria-label="More options for Lab notes"]').click()
     canvas.get_by_role('button', name='Remove Lab notes', exact=True).click()
     expect(canvas).not_to_contain_text('Classroom observations')
+    page.locator('#dashboard-edit-extras summary').click()
     page.locator('#dashboard-discard').click()
     expect(canvas).to_contain_text('Classroom observations')
     context.set_offline(True)
@@ -451,6 +465,7 @@ def exercise(browser, screenshot_dir=None):
     dashboard(phone)
     expect(phone.locator('#dashboard-canvas')).to_contain_text('Sound activity')
     expect(phone.get_by_role('slider',name='Brightness',exact=True)).to_be_enabled()
+    assert_card_fits(phone.locator('#dashboard-canvas article[data-widget-kind=rgb]'))
     phone.get_by_role('heading',name='Relay',exact=True).scroll_into_view_if_needed()
     assert phone.evaluate('document.documentElement.scrollWidth === window.innerWidth')
     if screenshot_dir:
