@@ -3,22 +3,21 @@ import { cameraMediaId,hardwareWidget,motorStreamProfile } from './hardware-stre
 import { openHardwareSetup } from './hardware-setup.js?v=3.0.2';
 import { animateWidget, sampleAdvanced } from './widget-motion.js?v=0.37.0';
 import { controlPurposeChoices } from './control-stream-model.js?v=0.37.0';
-import { createControlStatusSource } from './control-state.js?v=3.0.0';
+import { createControlStatusSource } from './control-state.js?v=3.0.4';
 import { safeDeviceHealth } from './specialized-model.js?v=0.36.1';
 import { behaviorRefs,applyBehavior,validateDashboardBehavior,dashboardTabs,panelParents } from './widget-behavior.js?v=0.36.1';
 import { mountBehaviorForm } from './widget-behavior-form.js?v=0.36.1';
 import { navigationBar,placePanelNodes,editNavigation } from './dashboard-navigation.js?v=3.0.0';
-import { supportsValueText,textSizeChoices,widgetTextPlan,fitWidgetText,gaugeTextSize,decorateWidgetText,watchWidgetText } from './widget-text.js?v=0.36.1';
+import { supportsValueText,textSizeChoices,widgetTextPlan,fitWidgetText,gaugeTextSize,decorateWidgetText,watchWidgetText } from './widget-text.js?v=3.0.4';
 import { renderWidgetScene } from './widget-visual.js?v=0.37.0';
 import { NUMERIC_WIDGETS,iconChoices,widgetSettingValues,applyWidgetSettings,widgetIconId,widgetNumber } from './widget-settings.js?v=0.37.0';
 import { phoneLayout,phoneOrder } from './phone-layout.js?v=0.37.0';
 import { editPhoneLayout,mountPhoneLayoutEditor } from './dashboard-phone-editor.js?v=3.0.3';
-import { phonePreviewCard } from './phone-preview.js?v=0.37.0';
 import { streamMappingLabel } from './stream-mapping.js?v=0.36.1';
 import { widgetLibraryInventory,filterWidgetLibrary,WIDGET_LIBRARY_GROUPS,librarySeriesOrder,widgetSupportsStream,widgetLibraryPreview } from './widget-library.js?v=3.0.0';
 import { applyWidgetAppearance } from './widget-visual.js?v=0.37.0';
-import { protectedMedia } from './protected-media.js?v=3.0.2';
-import { CONTROL_TYPES, SPECIAL_TYPES, compatibleWidget, createCommandClient, renderOutputControl, phoneColumns } from './io-widgets.js?v=3.0.2';
+import { protectedMedia } from './protected-media.js?v=3.0.4';
+import { CONTROL_TYPES, SPECIAL_TYPES, compatibleWidget, createCommandClient, renderOutputControl, passiveOutputFace } from './io-widgets.js?v=3.0.4';
 import { renderSpecial } from './io-display.js?v=3.0.2';
 import { patchWidgetReadingTree,widgetSourceRevision } from './stable-widget-refresh.js?v=0.36.1';
 import { missingExperimentWidgets } from './experiment-model.js?v=0.36.1';
@@ -26,9 +25,9 @@ import { WIDGET_DESIGN } from './widget-design.js?v=0.37.0';
 import { readingDelivery } from './reading-delivery.js?v=3.0.0';
 import { BUILTIN_BLUEPRINTS, instantiateBlueprint, captureSensorBlueprint, matchingGroupDevices } from './library-model.js?v=0.36.1';
 import { THEME_IDS, applySurfaceTheme } from './themes.js?v=0.36.1';
-import { createLayoutGestures, normalizeWidgetSize } from './layout-gestures.js?v=0.36.1';
+import { createLayoutGestures, normalizeWidgetSize } from './layout-gestures.js?v=3.0.4';
 import { streamValue, validStreamReadings, displayStreamNumber } from './sensor-catalog.js?v=0.36.1';
-import { createMediaWidgets, validateMediaUrl } from './media-widget.js?v=0.36.1';
+import { createMediaWidgets, validateMediaUrl } from './media-widget.js?v=3.0.4';
 // One versioned JSON document keeps a dashboard save atomic within the existing
 // widgets table. The canonical record ID equals the project ID. RLS still applies.
 export function createDashboard({request,friendlyError,getSession,getGeneration,createControlStream=null,getLibrary=()=>({groups:[],blueprints:[],ready:false}),onCaptureBlueprint=()=>{throw new Error('Load the project library first.');}}) {
@@ -102,8 +101,8 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   const controlStatus=createControlStatusSource({generation:getGeneration,load:id=>request('/rest/v1/rpc/rs_io_device_status',{method:'POST',authenticated:true,body:{p_device:id},timeoutMs:4500})});
   const layoutSignature=(items=widgets,theme=dashboardTheme,extras=layoutExtras)=>signature({widgets:items,theme,extras});
   const media=createMediaWidgets({canUse:()=>active&&!!project&&!!getSession()});
-  const gestures=createLayoutGestures({canvas:$('dashboard-canvas'),canEdit:()=>active&&editing&&!phonePreview()&&!saving&&loaded&&!loadFailed,onAdd:(type,index)=>newWidget(type,index),onMove:move,onResize:resizeWidget,onCancel:render,onAnnounce:text=>{$('dashboard-layout-status').textContent=text;}});
-  const phoneGestures=createLayoutGestures({canvas:$('dashboard-canvas'),phoneMode:()=>true,canEdit:()=>active&&editing&&phonePreview()&&!saving&&loaded&&!loadFailed,onAdd:()=>{},onMove:(id,index)=>{const order=phoneOrder(phoneConfig()).filter(w=>w.id!==id);changePhone(id,{before:order[index]?.id||null});},onResize:(id,size)=>changePhone(id,{span:[4,6,12].reduce((best,n)=>Math.abs(n-size.columns)<Math.abs(best-size.columns)?n:best,6),height:size.height}),onCancel:render,onAnnounce:text=>{$('dashboard-layout-status').textContent=text;}});
+  const gestures=createLayoutGestures({canvas:$('dashboard-canvas'),canEdit:()=>active&&editing&&!phonePreview()&&!saving&&loaded&&!loadFailed,onAdd:(type,index)=>newWidget(type,index),onMove:(id,index,target)=>moveDropped(id,target,false),onResize:resizeWidget,onCancel:render,onAnnounce:text=>{$('dashboard-layout-status').textContent=text;}});
+  const phoneGestures=createLayoutGestures({canvas:$('dashboard-canvas'),phoneMode:()=>true,canEdit:()=>active&&editing&&phonePreview()&&!saving&&loaded&&!loadFailed,onAdd:()=>{},onMove:(id,index,target)=>moveDropped(id,target,true),onResize:(id,size)=>changePhone(id,{span:[4,6,12].reduce((best,n)=>Math.abs(n-size.columns)<Math.abs(best-size.columns)?n:best,6),height:size.height}),onCancel:render,onAnnounce:text=>{$('dashboard-layout-status').textContent=text;}});
   function deactivate(){if(hardwareDialog?.open)hardwareDialog.close();controlStatus.clear();controlClient.stop();for(const id of disposers.keys())dispose(id);widgetRoots.clear();gestures.cancel();phoneGestures.cancel();clearTimeout(syncTimer);syncVersion++;active=false;removeMotor();clearTimeout(autoTimer);autoVersion++;media.stopAll();}
   function queueAuto(){
     clearTimeout(autoTimer);const cycle=++autoVersion;
@@ -172,12 +171,22 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     select.disabled=editing||saving;
     $('dashboard-viewer-group').disabled=editing||saving;$('dashboard-viewer-device').disabled=editing||saving;$('dashboard-project-scope').textContent=project.name;
   }
-  function visibleWidgets(){
-    const allowed=new Set(matchingViewerDevices().map(d=>d.id)),selected=$('dashboard-viewer-device').value,section=$('dashboard-viewer-section').value;
-    const parents=panelParents(widgets);const scoped=editing?widgets:widgets.filter(w=>(!section||(parents.has(w.id)?widgets.find(p=>p.id===parents.get(w.id))?.tab:w.tab)===section)&&(!w.device_id||allowed.has(w.device_id)&&(!selected||selected===w.device_id)));
-    if(!phonePreview())return scoped;
-    return phoneLayout(phoneConfig(),phoneWidth(),phoneScale(),{section,visibleIds:new Set(scoped.map(w=>w.id)),showHidden:editing}).map(p=>widgets.find(w=>w.id===p.id));
+  function layoutView(){
+    const allowed=new Set(matchingViewerDevices().map(device=>device.id));
+    const selected=$('dashboard-viewer-device').value,section=$('dashboard-viewer-section').value;
+    const parents=panelParents(widgets),byId=new Map(widgets.map(widget=>[widget.id,widget]));
+    const inScope=widget=>!widget.device_id||allowed.has(widget.device_id)&&(!selected||selected===widget.device_id);
+    const scoped=widgets.filter(widget=>{
+      const parent=byId.get(parents.get(widget.id));
+      return inScope(widget)&&(!parent||inScope(parent))&&(!section||(parent||widget).tab===section);
+    });
+    const width=phonePreview()?phoneWidth():window.innerWidth<=720?window.innerWidth:0;
+    const scale=phonePreview()?phoneScale():1;
+    if(!width)return {shown:scoped,placements:new Map(),width,scale};
+    const layout=phoneLayout(phoneConfig(),width,scale,{visibleIds:new Set(scoped.map(widget=>widget.id))});
+    return {shown:layout.map(card=>byId.get(card.id)),placements:new Map(layout.map(card=>[card.id,card])),width,scale};
   }
+  function visibleWidgets(){return layoutView().shown;}
   const blueprintCatalog=()=>[...BUILTIN_BLUEPRINTS,...(getLibrary().blueprints||[])];
   function blueprintFields(){
     const bp=blueprintCatalog().find(b=>b.id===$('blueprint-select').value),type=bp?.widgets.find(w=>w.source_key==='$selected')?.value_type;
@@ -206,7 +215,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   function syncControls(){
     hardwareButton.disabled=!active||!loaded||loadFailed||saving||widgets.length>=maxWidgets;
     show('dashboard-edit-toolbar',editing);show('widget-palette-panel',editing);$('dashboard-canvas').classList.toggle('editing-canvas',editing);show('dashboard-edit',!editing);
-    $('dashboard-edit').disabled=!loaded||loadFailed||saving;$('dashboard-refresh').disabled=phonePreview()||refreshing;$('dashboard-phone-preview').disabled=!loaded||loadFailed||saving;$('dashboard-phone-studio').hidden=editing;
+    $('dashboard-edit').disabled=!loaded||loadFailed||saving;$('dashboard-refresh').disabled=refreshing;$('dashboard-phone-preview').disabled=!loaded||loadFailed||saving;$('dashboard-phone-studio').hidden=editing;
     $('dashboard-add').disabled=saving||widgets.length>=maxWidgets;
     $('dashboard-first-widget').disabled=!loaded||loadFailed||saving;
     $('dashboard-save').disabled=!dirty||saving||loadFailed;
@@ -219,7 +228,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     $('dashboard-undo').disabled=!history.length||saving;
     $('dashboard-discard').disabled=saving;
     $('dashboard-reload').disabled=dirty||saving;
-    $('dashboard-range').disabled=saving||phonePreview();$('dashboard-theme').disabled=saving||!loaded||loadFailed;$('dashboard-theme').value=dashboardTheme;
+    $('dashboard-range').disabled=saving;$('dashboard-theme').disabled=saving||!loaded||loadFailed;$('dashboard-theme').value=dashboardTheme;
     $('widget-apply').disabled=saving;$('dashboard-blueprint-add').disabled=!loaded||loadFailed||saving||widgets.length>=maxWidgets;$('dashboard-blueprint-capture').disabled=!loaded||loadFailed||saving||!widgets.length||!getLibrary().ready;
     $('dashboard-save-state').textContent=saving?'Saving to Supabase…':dirty?'Unsaved changes':revision?'Saved in Supabase':'No saved layout yet';
     $('dashboard-save-state').classList.toggle('unsaved',dirty);
@@ -238,36 +247,51 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
       }));
       tabbar.dataset.sections=select.dataset.sections;
     }
-    tabbar.hidden=editing||select.options.length<2;
+    tabbar.hidden=select.options.length<2;
     for(const button of tabbar.querySelectorAll('[data-section]')){
       const selected=button.dataset.section===select.value;
       button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;
     }
-    const preview=phonePreview(),canvas=$('dashboard-canvas'),shown=visibleWidgets(),visible=new Set(shown.map(w=>w.id)),ordered=[],placements=new Map(preview?phoneLayout(phoneConfig(),phoneWidth(),phoneScale(),{visibleIds:visible,showHidden:editing}).map(p=>[p.id,p]):[]);
-    canvas.classList.toggle('phone-layout-canvas',preview);$('dashboard-canvas-viewport').classList.toggle('phone-preview-viewport',preview);show('dashboard-phone-controls',preview);
-    show('dashboard-phone-editor',preview&&editing);if(preview&&editing)mountPhoneLayoutEditor($('dashboard-phone-editor'),phoneConfig(),{disabled:saving,onChange:changePhone,onEdit:w=>editWidget(w.id)});
-    if(preview){canvas.style.setProperty('--phone-width',phoneWidth()+'px');canvas.style.setProperty('--text-scale',String(phoneScale()));$('dashboard-phone-summary').textContent=phoneWidth()+' dp · '+shown.length+' visible · '+(layoutExtras.custom_phone_layout===true?'Custom phone layout':'Shared layout')+(layoutExtras.custom_phone_layout===true?' · '+widgets.filter(w=>w.phone?.visible===false).length+' hidden on phone':'');}
-    applySurfaceTheme(canvas,dashboardTheme);media.sync(preview?[]:shown);show('dashboard-empty',widgets.length===0);show('dashboard-filter-empty',widgets.length>0&&shown.length===0);$('dashboard-filter-empty').textContent=preview?'No cards are visible in this phone preview. Check phone visibility or clear temporary filters.':'No saved widgets match these filters. Clear filters to see the whole dashboard.';
+    const preview=phonePreview(),canvas=$('dashboard-canvas'),{shown,placements,width,scale}=layoutView();
+    const visible=new Set(shown.map(w=>w.id)),ordered=[],readOnly=editing||preview;
+    canvas.classList.toggle('phone-layout-canvas',preview);
+    canvas.classList.toggle('phone-dashboard-layout',!!width);
+    $('dashboard-canvas-viewport').classList.toggle('phone-preview-viewport',preview);
+    show('dashboard-phone-controls',preview);
+    show('dashboard-phone-editor',preview&&editing);
+    if(preview&&editing)mountPhoneLayoutEditor($('dashboard-phone-editor'),phoneConfig(),{disabled:saving,onChange:changePhone,onEdit:w=>editWidget(w.id)});
+    canvas.style.setProperty('--text-scale',String(scale));
+    if(preview){
+      canvas.style.setProperty('--phone-width',width+'px');
+      $('dashboard-phone-summary').textContent=layoutExtras.custom_phone_layout===true?'Custom phone layout':'Shared layout';
+    }
+    applySurfaceTheme(canvas,dashboardTheme);
+    media.sync(readOnly?[]:shown);
+    show('dashboard-empty',widgets.length===0);
+    show('dashboard-filter-empty',widgets.length>0&&shown.length===0);
+    $('dashboard-filter-empty').textContent='No widgets in this view.';
     for(const w of shown){
       const i=widgets.findIndex(item=>item.id===w.id),placement=placements.get(w.id);
-      const sig=JSON.stringify([w,i,editing,dashboardTheme,preview,preview?phoneWidth():0,preview?phoneScale():0,preview?placement:null,layoutExtras.custom_phone_layout===true,widgetSourceRevision(w,channels,devices,project?.id,behaviorRefs(w))]);
+      const sourceRevision=widgetSourceRevision(w,channels,devices,project?.id,behaviorRefs(w));
+      const outputKey=JSON.stringify([w.type,w.title,w.channel_id,w.device_id,w.on_label,w.off_label,w.behavior,sourceRevision]);
+      const sig=JSON.stringify([w,i,editing,dashboardTheme,preview,width,scale,placement,sourceRevision]);
       const motorBinding=w.type==='health'?bind(w):null;
       const driver=motorStreamProfile(motorBinding?.channel,motorBinding?.device);
       const motorMapping=driver?channels.filter(row=>motorStreamProfile(row,motorBinding.device)===driver)
         .map(row=>[row.channel_key,row.config.virtual_pin]):[];
       const widgetSignature=driver?sig+JSON.stringify(motorMapping):sig;
       const old=widgetRoots.get(w.id),same=old?.sig===widgetSignature;
-      if(same&&(preview||driver||unbound.includes(w.type)||CONTROL_TYPES.includes(w.type))){ordered.push(old.element);continue;}
+      if(same&&(driver||unbound.includes(w.type)||CONTROL_TYPES.includes(w.type))){ordered.push(old.element);continue;}
       if(!same)dispose(w.id);
-      const fresh=preview?phonePreviewCard(w,placement,{className:'dashboard-widget',theme:dashboardTheme==='site'?websiteColors():dashboardTheme,scale:phoneScale(),channel:channels.find(c=>c.id===w.channel_id)}):renderWidget(w,i);
-      if(preview&&editing&&!same)phoneCardTools(fresh,w,placement);
+      const previousFace=readOnly&&old?.outputKey===outputKey?old.element.querySelector(':scope > .io-control'):null;
+      const fresh=renderWidget(w,i,{preview,placement,scale,readOnly,previousFace});
       const stamp=Number(fresh.getAttribute?.('data-recorded-ms'))||0;
       if(same){
         patchWidgetReadingTree(old.element,fresh,document.activeElement);
         if(!editing&&sampleAdvanced(old.newest,stamp))animateWidget(old.element,widgetIconId(w));
         old.newest=Math.max(old.newest||0,stamp);
         ordered.push(old.element);
-      }else{widgetRoots.set(w.id,{sig:widgetSignature,element:fresh,newest:stamp});ordered.push(fresh);}
+      }else{widgetRoots.set(w.id,{sig:widgetSignature,element:fresh,newest:stamp,outputKey});ordered.push(fresh);}
     }
     for(const [id,item] of widgetRoots)if(!visible.has(id)){dispose(id);item.element.remove();widgetRoots.delete(id);}placePanelNodes(canvas,shown,ordered);
     $('dashboard-filter-summary').textContent=visible.size+' of '+widgets.length+' widgets shown · '+(preview?'Phone order, size and visibility applied. ':'')+'Temporary filters are local to this browser.';
@@ -279,8 +303,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     dirty=layoutSignature()!==layoutSignature(savedWidgets,savedTheme,savedExtras);message('dashboard-notice','');render();
   }
   function changePhone(id,change){if(!editing||saving)return;try{const next=editPhoneLayout(phoneConfig(),id,change);commit(next.widgets,dashboardTheme,Object.fromEntries(Object.entries(next).filter(([k])=>!['widgets','theme','kind','save_token'].includes(k))));}catch(e){message('dashboard-error',e.message);}}
-  function openPhoneEditor(){if(!loaded||loadFailed||saving)return;startEditing();gestures.cancel();phoneGestures.cancel();media.stopAll();controlClient.stop();$('dashboard-phone-preview').setAttribute('aria-pressed','true');render();$('dashboard-phone-editor').scrollIntoView({block:'nearest'});}
-  function phoneCardTools(card,w,placement){const tools=document.createElement('div');tools.className='phone-card-tools';const ordered=phoneOrder(phoneConfig()),at=ordered.findIndex(x=>x.id===w.id);for(const [label,fn,disabled]of [['↑',()=>changePhone(w.id,{before:ordered[at-1]?.id}),at===0],['↓',()=>changePhone(w.id,{before:ordered[at+2]?.id||null}),at===ordered.length-1],['Edit',()=>editWidget(w.id),false]]){const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=saving||disabled;b.setAttribute('aria-label',(label==='↑'?'Move up':label==='↓'?'Move down':label)+' '+w.title);b.addEventListener('click',fn);tools.append(b);}const grip=document.createElement('button');grip.type='button';grip.textContent='↕';grip.setAttribute('aria-label','Drag '+w.title);grip.style.touchAction='none';grip.addEventListener('pointerdown',e=>phoneGestures.beginMove(e,w.id,w.title));tools.append(grip);const resize=document.createElement('button');resize.type='button';resize.textContent='↘';resize.setAttribute('aria-label','Resize '+w.title);resize.style.touchAction='none';resize.addEventListener('pointerdown',e=>phoneGestures.beginResize(e,w.id,card,{columns:placement?.span||6,height:placement?.height||0}));resize.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();if(e.key==='ArrowUp'||e.key==='ArrowDown')changePhone(w.id,{height:Math.max(160,Math.min(960,(placement?.height||240)+(e.key==='ArrowUp'?-20:20)))});else{const spans=[4,6,12],index=spans.indexOf(placement?.span||6);changePhone(w.id,{span:spans[Math.max(0,Math.min(2,index+(e.key==='ArrowLeft'?-1:1)))]});}});tools.append(resize);if(layoutExtras.custom_phone_layout&&w.phone?.visible===false){const hidden=document.createElement('span');hidden.textContent='Hidden on phone';tools.append(hidden);}card.append(tools);}
+  function openPhoneEditor(){if(!loaded||loadFailed||saving)return;gestures.cancel();phoneGestures.cancel();media.stopAll();controlClient.stop();$('dashboard-phone-preview').setAttribute('aria-pressed','true');startEditing();$('dashboard-phone-editor').scrollIntoView({block:'nearest'});}
   const hardwareButton=$('dashboard-add-hardware');
   let hardwareDialog=null;
   hardwareButton.addEventListener('click',()=>{
@@ -321,13 +344,13 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   function svg(name,attrs={},text){const el=document.createElementNS('http://www.w3.org/2000/svg',name);for(const [key,value]of Object.entries(attrs))el.setAttribute(key,String(value));if(text!==undefined)el.textContent=text;return el;}
   function widgetIcon(type){const icon=svg('svg',{viewBox:'0 0 24 24',class:'widget-icon','aria-hidden':'true'});icon.append(svg('path',{d:WIDGET_DESIGN.icons[type]||WIDGET_DESIGN.icons.value}));return icon;}
   function websiteColors(){const id=document.documentElement.getAttribute('data-theme');return THEME_IDS.includes(id)?id:'mint';}
-  function makeGauge(w,value,unit,channel){
+  function makeGauge(w,value,unit,channel,scale=1){
     const p=Math.max(0,Math.min(1,(value-w.min)/(w.max-w.min)));
     const plot=svg('svg',{viewBox:'0 0 240 157',class:'widget-gauge',role:'img','aria-label':`${w.title}: ${number(value,channel,w)} ${unit}. Gauge range ${w.min} to ${w.max}.`});
     const d='M 25 114 A 95 95 0 0 1 215 114';
     plot.append(svg('path',{d,fill:'none',stroke:'#e9f2ed','stroke-width':13,'stroke-linecap':'round'}));
     plot.append(svg('path',{d,fill:'none',stroke:'#168c77','stroke-width':13,'stroke-linecap':'round',pathLength:100,'stroke-dasharray':`${p*100} 100`}));
-    const reading=svg('text',{x:120,y:95,'text-anchor':'middle',class:'widget-gauge-value'},number(value,channel,w));const typography=widgetTextPlan(w,'value',29);if(typography.enabled)reading.style.fontSize=gaugeTextSize(w,number(value,channel,w))+'px';plot.append(reading);
+    const reading=svg('text',{x:120,y:95,'text-anchor':'middle',class:'widget-gauge-value'},number(value,channel,w));const typography=widgetTextPlan(w,'value',29);if(typography.enabled)reading.style.fontSize=gaugeTextSize(w,number(value,channel,w),scale)+'px';plot.append(reading);
     plot.append(svg('text',{x:120,y:113,'text-anchor':'middle',class:'widget-gauge-unit'},unit));
     plot.append(svg('text',{x:23,y:141,class:'widget-gauge-label'},number(w.min,channel,w)));
     plot.append(svg('text',{x:217,y:141,'text-anchor':'end',class:'widget-gauge-label'},number(w.max,channel,w)));return plot;
@@ -349,10 +372,22 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     const label=t=>new Date(t).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
     plot.append(svg('text',{x:40,y:177,class:'chart-time'},label(first)));plot.append(svg('text',{x:502,y:177,'text-anchor':'end',class:'chart-time'},label(last)));return plot;
   }
-  function renderWidget(w,index){
+  function renderWidget(w,index,{preview,placement,scale,readOnly,previousFace}){
     const card=document.createElement('article');card.className='dashboard-widget'+(w.width==='full'?' full-width':'')+(editing?' editable':'');card.setAttribute('data-widget-id',w.id);card.dataset.widgetKind=w.type;applySurfaceTheme(card,w.theme);
-    const dimensions=w.size||{columns:w.width==='full'?12:6,height:0};card.style.setProperty('--widget-cols',String(dimensions.columns));if(dimensions.height){card.style.setProperty('--widget-height',dimensions.height+'px');card.classList.toggle('sized-widget',true);}
-    card.style.setProperty('--phone-cols',String(phoneColumns(w,window.innerWidth||390,1,layoutExtras.custom_phone_layout===true)));applyWidgetAppearance(card,w,dashboardTheme==='site'?websiteColors():dashboardTheme);if(w.design?.align&&['left','center','right'].includes(w.design.align))card.style.textAlign=w.design.align;const head=document.createElement('div');head.className='dashboard-widget-heading';const title=document.createElement('h3');const defaultControlTitle=(w.type==='switch'&&w.title==='Button / switch · On/Off')||(w.type==='rgb'&&w.title==='RGB color');title.textContent=defaultControlTitle?(bind(w)?.channel.title||w.title):w.title;decorateWidgetText(title,w,'title');const tag=document.createElement('span');tag.className='widget-type-tag';tag.textContent=typeLabels[w.type];head.append(title,widgetIcon(widgetIconId(w)),tag);
+    const dimensions=placement?{columns:placement.span,height:placement.height}
+      :w.size||{columns:w.width==='full'?12:6,height:0};
+    card.style.setProperty('--widget-cols',String(dimensions.columns));
+    if(dimensions.height){
+      card.style.setProperty('--widget-height',dimensions.height+'px');
+      card.classList.add('sized-widget');
+    }
+    if(placement){
+      card.dataset.phonePlacement='';
+      card.style.setProperty('--phone-column',String(placement.column+1));
+      card.style.setProperty('--phone-row',String(placement.row+1));
+      card.style.setProperty('--phone-cols',String(placement.span));
+    }
+    applyWidgetAppearance(card,w,dashboardTheme==='site'?websiteColors():dashboardTheme);if(w.design?.align&&['left','center','right'].includes(w.design.align))card.style.textAlign=w.design.align;const head=document.createElement('div');head.className='dashboard-widget-heading';const title=document.createElement('h3');const defaultControlTitle=(w.type==='switch'&&w.title==='Button / switch · On/Off')||(w.type==='rgb'&&w.title==='RGB color');title.textContent=defaultControlTitle?(bind(w)?.channel.title||w.title):w.title;decorateWidgetText(title,w,'title');head.append(title,widgetIcon(widgetIconId(w)));
     const vpin=bind(w)?.channel.config?.virtual_pin;
     if(typeof vpin==='string'&&/^V[0-9]{1,3}$/i.test(vpin)){
       const pin=document.createElement('span');pin.className='widget-pin';pin.textContent=vpin.toUpperCase();head.append(pin);
@@ -360,9 +395,8 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     card.append(head);
     const source=bind(w),motorProfile=w.type==='health'?motorStreamProfile(source?.channel,source?.device):'';
     if(motorProfile){
-      tag.textContent='Motor driver';
       const streams=channels.filter(row=>motorStreamProfile(row,source.device)===motorProfile);
-      const controller=renderMotorPreview({driver:motorProfile,streams,dashboard:true,interactive:!editing});
+      const controller=renderMotorPreview({driver:motorProfile,streams,dashboard:true,interactive:!readOnly});
       const stop=()=>{if(document.hidden)controller.stop();};
       addEventListener('blur',controller.stop);
       document.addEventListener('visibilitychange',stop);
@@ -378,7 +412,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     else if(w.type==='divider'){const line=document.createElement('hr');line.className='widget-divider';card.append(line);}
     else if(w.type==='camera'&&w.mode==='protected'){
       if(w.media_id===cameraMediaId(source?.channel,source?.device)){
-        card.append(protectedMedia(w,{request,getSession,canUse:()=>active&&!!getSession()&&navigator.onLine!==false,
+        card.append(protectedMedia(w,{request,getSession,readOnly,canUse:()=>active&&!!getSession()&&navigator.onLine!==false,
           onDispose:f=>{if(!disposers.has(w.id))disposers.set(w.id,[]);disposers.get(w.id).push(f);}}));
       }else{
         const notice=document.createElement('p');notice.className='widget-error-state';
@@ -386,7 +420,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
         card.append(notice);
       }
     }
-    else if(w.type==='camera')card.append(media.render(w));
+    else if(w.type==='camera')card.append(media.render(w,readOnly));
     else{
       const binding=bind(w),data=datasets.get(w.channel_id),valid=validStreamReadings(data?.rows||[],binding?.channel.value_type||'number'),summary=binding?.channel.value_type==='number'?summarize(data):null;
       if(binding?.device.config?.mode==='hardware'&&binding.channel.direction==='input'){
@@ -394,15 +428,22 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
         for(let n=valid.length-1;n>=0;n--){const stamp=Date.parse(valid[n].recorded_at);if(stamp<=now+2000){if(valid[n].quality!=='estimated'&&now-stamp<=20000)card.setAttribute('data-recorded-ms',String(stamp));break;}}
       }
       if(!binding){const p=document.createElement('p');p.className='widget-error-state';p.textContent='Stream unavailable. Check its binding in Edit.';card.append(p);}
-      else if(CONTROL_TYPES.includes(w.type)){if(!editing)card.append(renderOutputControl(w,{...binding,channels,readings:id=>datasets.get(id)?.rows||[],request,isOwner:()=>!!getSession(),statusSource:controlStatus,canUse:()=>!!getSession()&&navigator.onLine!==false,active:()=>active,client:controlClient,onDispose:f=>{if(!disposers.has(w.id))disposers.set(w.id,[]);disposers.get(w.id).push(f);}}));else{const p=document.createElement('p');p.textContent='Control preview';card.append(p);}}
+      else if(CONTROL_TYPES.includes(w.type)){
+        card.append(previousFace?passiveOutputFace(previousFace):renderOutputControl(w,{
+          ...binding,channels,readings:id=>datasets.get(id)?.rows||[],request,readOnly,
+          isOwner:()=>!!getSession(),statusSource:controlStatus,
+          canUse:()=>!!getSession()&&navigator.onLine!==false,active:()=>active,client:controlClient,
+          onDispose:f=>{if(!disposers.has(w.id))disposers.set(w.id,[]);disposers.get(w.id).push(f);}
+        }));
+      }
       else if(SPECIAL_TYPES.includes(w.type))card.append(renderSpecial(w,binding.channel,data,(w.series||[]).map(id=>({channel:channels.find(c=>c.id===id),rows:datasets.get(id)?.rows})).filter(s=>s.channel)));
       else if(data?.error&&!valid.length){const p=document.createElement('p');p.className='widget-error-state';p.textContent=data.error;card.append(p);}
       else if(!valid.length){const p=document.createElement('p');p.className='widget-no-data';p.textContent=data?(binding.device.config?.mode==='simulation'?'No simulated readings in this time range.':'No sensor readings in this time range.'):'Loading saved readings…';card.append(p);}
       else if(w.type==='value'){
-        const value=document.createElement('div');value.className='widget-reading';value.textContent=number(summary[w.aggregation],binding.channel,w);const unit=document.createElement('small');unit.textContent=binding.channel.unit;if(widgetTextPlan(w).enabled){unit.style.display=widgetTextPlan(w).unitPlacement==='below'?'block':'inline';unit.style.fontSize='15px';unit.style.marginLeft=widgetTextPlan(w).unitPlacement==='below'?'0':'4px';}value.append(unit);decorateWidgetText(value,w,'value',(window.innerWidth||390)>720&&dimensions.columns===12?42:38);card.append(value);
+        const value=document.createElement('div');value.className='widget-reading';value.textContent=number(summary[w.aggregation],binding.channel,w);const unit=document.createElement('small');unit.textContent=binding.channel.unit;if(widgetTextPlan(w).enabled){unit.style.display=widgetTextPlan(w).unitPlacement==='below'?'block':'inline';unit.style.fontSize='15px';unit.style.marginLeft=widgetTextPlan(w).unitPlacement==='below'?'0':'4px';}value.append(unit);decorateWidgetText(value,w,'value',!placement&&dimensions.columns===12?42:38);card.append(value);
         const label=document.createElement('p');label.className='widget-stat-label';label.textContent={latest:'Latest',mean:'Sample average',min:'Minimum',max:'Maximum'}[w.aggregation];if(w.aggregation!=='latest')card.append(label);
       }else if(w.type==='gauge'){
-        card.append(makeGauge(w,summary.latest,binding.channel.unit,binding.channel));
+        card.append(makeGauge(w,summary.latest,binding.channel.unit,binding.channel,scale));
         if(summary.latest<w.min||summary.latest>w.max){const p=document.createElement('p');p.className='widget-out-of-range';p.textContent='Reading is outside the configured gauge range.';card.append(p);}
       }else if(w.type==='chart'){
         card.append(makeChart(w,data,summary,binding.channel.unit));
@@ -425,32 +466,71 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
         const badge=document.createElement('span');badge.className='sim-badge';badge.textContent='SIMULATED';head.append(badge);
       }
     }
-    if(editing){
-      const tools=document.createElement('div');tools.className='widget-tools';
-      const button=(label,aria,action,disabled=false,parent=tools)=>{
-        const b=document.createElement('button');b.type='button';b.textContent=label;
-        b.setAttribute('aria-label',aria);b.disabled=disabled||saving;
-        b.addEventListener('click',action);parent.append(b);return b;
-      };
-      button('Edit','Edit '+w.title,()=>editWidget(w.id));
-      button('↑','Move '+w.title+' earlier',()=>move(w.id,index-1),index===0);
-      button('↓','Move '+w.title+' later',()=>move(w.id,index+1),index===widgets.length-1);
-      const menu=document.createElement('details');menu.className='widget-actions';
-      const summary=document.createElement('summary');summary.textContent='⋯';
-      summary.setAttribute('aria-label','More options for '+w.title);
-      const actions=document.createElement('div');actions.className='widget-action-list';
-      button('Copy','Duplicate '+w.title,()=>{
+    if(editing)mountCardTools(card,w,index,preview,dimensions);
+    return card;
+  }
+  function moveDropped(id,{before,after},phone){
+    if(!before&&!after)return;
+    if(phone){
+      const order=phoneOrder(phoneConfig()).filter(widget=>widget.id!==id);
+      const next=before||order[order.findIndex(widget=>widget.id===after)+1]?.id||null;
+      changePhone(id,{before:next});
+      return;
+    }
+    const previous=widgets.findIndex(widget=>widget.id===id);
+    const target=widgets.findIndex(widget=>widget.id===(before||after));
+    if(previous<0||target<0)return;
+    move(id,target+(before?0:1)-(previous<target?1:0));
+  }
+  function mountCardTools(card,w,index,preview,dimensions){
+    const tools=document.createElement('div');tools.className='widget-tools';
+    const layoutGestures=preview?phoneGestures:gestures;
+    const button=(label,aria,action,disabled=false,parent=tools)=>{
+      const node=document.createElement('button');node.type='button';node.textContent=label;
+      node.setAttribute('aria-label',aria);node.disabled=disabled||saving;
+      node.addEventListener('click',action);parent.append(node);return node;
+    };
+    const edit=button('Edit','Edit '+w.title,()=>{if(!layoutGestures.consumeClick())editWidget(w.id);});
+    edit.className='widget-edit-button';
+    edit.addEventListener('pointerdown',event=>layoutGestures.beginMove(event,w.id,w.title));
+    const menu=document.createElement('details');menu.className='widget-actions';
+    const summary=document.createElement('summary');summary.textContent='⋯';
+    summary.setAttribute('aria-label','More options for '+w.title);
+    const actions=document.createElement('div');actions.className='widget-action-list';
+    const order=preview?phoneOrder(phoneConfig()):widgets;
+    const at=preview?order.findIndex(widget=>widget.id===w.id):index;
+    button('Move earlier','Move '+w.title+' earlier',()=>{
+      if(preview)changePhone(w.id,{before:order[at-1]?.id});else move(w.id,index-1);
+    },at===0,actions);
+    button('Move later','Move '+w.title+' later',()=>{
+      if(preview)changePhone(w.id,{before:order[at+2]?.id||null});else move(w.id,index+1);
+    },at===order.length-1,actions);
+    if(!preview){
+      button('Duplicate','Duplicate '+w.title,()=>{
+        menu.open=false;
         if(widgets.length<maxWidgets)commit([...widgets,{...clone(w),id:crypto.randomUUID(),title:(w.title+' copy').slice(0,120)}]);
       },widgets.length>=maxWidgets,actions);
       button('Remove','Remove '+w.title,()=>commit(widgets.filter(row=>row.id!==w.id)),false,actions).className='widget-remove';
-      menu.append(summary,actions);tools.append(menu);card.append(tools);
-      head.hidden=false;const grip=document.createElement('button');grip.type='button';grip.className='widget-drag-handle';grip.textContent='⠿';grip.setAttribute('aria-label','Drag '+w.title+' to move. Use the move buttons for keyboard reordering.');grip.disabled=saving;grip.addEventListener('pointerdown',event=>gestures.beginMove(event,w.id,w.title));head.append(grip);
-      const resize=document.createElement('button');resize.type='button';resize.className='widget-resize-handle';resize.textContent='◢';resize.disabled=saving;resize.setAttribute('aria-label','Resize '+w.title+'. Arrow left or right adjusts width; up or down adjusts height.');resize.addEventListener('pointerdown',event=>gestures.beginResize(event,w.id,card,dimensions));
-      resize.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home'].includes(event.key)||saving)return;event.preventDefault();const current=w.size||{columns:w.width==='full'?12:6,height:0};if(event.key==='Home'){resizeWidget(w.id,{columns:6,height:0});return;}const columns=Math.max(3,Math.min(12,current.columns+(event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0))),height=['ArrowUp','ArrowDown'].includes(event.key)?Math.max(160,Math.min(960,(current.height||Math.round(card.getBoundingClientRect().height/20)*20)+(event.key==='ArrowDown'?20:-20))):current.height;resizeWidget(w.id,{columns,height});});
-      // Keep editing tools last in the card for a predictable keyboard order.
-      card.removeChild(tools);card.append(resize,tools);
     }
-    return card;
+    menu.append(summary,actions);tools.append(menu);
+    const resize=button('◢','Resize '+w.title,()=>{});
+    resize.className='widget-resize-handle';
+    resize.addEventListener('pointerdown',event=>layoutGestures.beginResize(event,w.id,card,dimensions));
+    resize.addEventListener('keydown',event=>{
+      if(saving||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home'].includes(event.key))return;
+      event.preventDefault();
+      const delta=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
+      const vertical=['ArrowDown','ArrowUp'].includes(event.key);
+      const minHeight=vertical?Math.max(160,Math.min(960,(dimensions.height||Math.round(card.getBoundingClientRect().height/20)*20)+(event.key==='ArrowDown'?20:-20))):dimensions.height;
+      if(preview){
+        const widths=[4,6,12],at=widths.indexOf(dimensions.columns);
+        if(event.key==='Home')changePhone(w.id,{span:0,height:0});
+        else if(delta)changePhone(w.id,{span:widths[Math.max(0,Math.min(2,at+delta))]});
+        else changePhone(w.id,{height:minHeight});
+      }else resizeWidget(w.id,event.key==='Home'?{columns:6,height:0}:{columns:Math.max(3,Math.min(12,dimensions.columns+delta)),height:minHeight});
+      widgetRoots.get(w.id)?.element.querySelector('.widget-resize-handle')?.focus();
+    });
+    card.append(tools);
   }
   function resizeWidget(id,size){if(!editing||saving||!widgets.some(w=>w.id===id))return;const clean=normalizeWidgetSize(size);commit(widgets.map(w=>w.id===id?{...w,size:clean,width:clean.columns===12?'full':'half'}:w));$('dashboard-layout-status').textContent='Widget resized to '+clean.columns+' of 12 columns'+(clean.height?', '+clean.height+' pixels minimum height.':', automatic height.');const card=[...$('dashboard-canvas').children].find(c=>c.getAttribute('data-widget-id')===id);card?.querySelector?.('.widget-resize-handle')?.focus();}
   function move(id,to){to=Math.max(0,Math.min(widgets.length-1,to));const from=widgets.findIndex(w=>w.id===id);if(from<0||to<0||to>=widgets.length||from===to)return;const next=clone(widgets),[item]=next.splice(from,1);next.splice(to,0,item);commit(next);}
@@ -483,9 +563,9 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   }
   async function refreshData(){
     if(!project||!getSession())return;const ctx=context(),requestVersion=++dataVersion;
-    const reportWidgets=phonePreview()?[]:visibleWidgets().filter(w=>['health','alarm'].includes(w.type)&&w.behavior?.version===1&&['device','events'].includes(w.behavior.variant));
+    const reportWidgets=visibleWidgets().filter(w=>['health','alarm'].includes(w.type)&&w.behavior?.version===1&&['device','events'].includes(w.behavior.variant));
     const inputs=new Set(channels.filter(channel=>channel.direction==='input').map(channel=>channel.id));
-    const needed=phonePreview()?[]:[...new Set(visibleWidgets().filter(w=>!unbound.includes(w.type)&&bind(w)).flatMap(behaviorRefs))].filter(id=>inputs.has(id));
+    const needed=[...new Set(visibleWidgets().filter(w=>!unbound.includes(w.type)&&bind(w)).flatMap(behaviorRefs))].filter(id=>inputs.has(id));
     refreshing=true;$('dashboard-refresh').disabled=true;
     const hours=Number($('dashboard-range').value)||24,since=new Date(Date.now()-hours*3600000).toISOString();
     const result=await Promise.allSettled(needed.map(async id=>{
@@ -505,10 +585,10 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
     });
     const delivery=readingDelivery(hardwareIds.flatMap(id=>datasets.get(id)?.rows||[]));
     const failed=needed.some(id=>datasets.get(id)?.error);
-    const label=phonePreview()?'Example phone layout':hardwareIds.length
+    const label=hardwareIds.length
       ?delivery?'Latest recorded '+delivery.age:'No sensor readings in this range'
       :needed.length?'Saved dashboard':'';
-    $('dashboard-data-state').setAttribute('data-age',failed||hardwareIds.length&&!delivery?.recent&&!phonePreview()?'waiting':'normal');
+    $('dashboard-data-state').setAttribute('data-age',failed||hardwareIds.length&&!delivery?.recent?'waiting':'normal');
     $('dashboard-data-state').textContent=[label,failed?'Refresh failed':!$('dashboard-auto-refresh').checked?'Auto refresh paused':''].filter(Boolean).join(' · ');
     render();
   }
@@ -524,7 +604,7 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
       if(cycle===syncVersion)queueLayoutSync();
     },5000);
   }
-  function startEditing(){if(!loaded||loadFailed||saving)return;controlClient.stop();$('dashboard-viewer-group').value='';$('dashboard-viewer-device').value='';editing=true;message('dashboard-notice','');render();}
+  function startEditing(){if(!loaded||loadFailed||saving)return;controlClient.stop();media.stopAll();editing=true;message('dashboard-notice','');render();}
   function sectionOptions(value){
     const select=$('widget-section');
     select.replaceChildren(new Option('All', ''));
@@ -660,6 +740,14 @@ export function createDashboard({request,friendlyError,getSession,getGeneration,
   $('dashboard-save').addEventListener('click',save);$('dashboard-discard').addEventListener('click',discard);
   $('dashboard-undo').addEventListener('click',()=>{if(!history.length||saving)return;const prior=history.pop();widgets=prior.widgets;dashboardTheme=prior.theme;layoutExtras=clone(prior.extras||savedExtras);dirty=layoutSignature()!==layoutSignature(savedWidgets,savedTheme,savedExtras);render();});
   $('dashboard-refresh').addEventListener('click',refreshData);
+  let viewportWidth=window.innerWidth;
+  addEventListener('resize',()=>{
+    const next=window.innerWidth;
+    if(next===viewportWidth)return;
+    const responsive=next<=720||viewportWidth<=720;
+    viewportWidth=next;
+    if(active&&responsive&&!phonePreview()){render();refreshData();}
+  });
   addEventListener('online',()=>{if(active){refreshData();queueAuto();}});
   $('dashboard-range').addEventListener('change',()=>{datasets=new Map();render();return refreshData();});
   $('dashboard-reload').addEventListener('click',async()=>{if(dirty||saving||!project)return;message('dashboard-error','');await loadLayout();await refreshData();});

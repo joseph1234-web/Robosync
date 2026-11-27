@@ -1,12 +1,20 @@
 import { animateWidget } from './widget-motion.js?v=0.37.0';
-import { controlReadiness,controlResult,authenticatedControlBoot,commandMatches,commandPresentation,reportedDelivery } from './control-state.js?v=3.0.0';
+import { controlReadiness,controlResult,authenticatedControlBoot,commandMatches,commandPresentation,reportedDelivery } from './control-state.js?v=3.0.4';
 import { CONTROL_STATE_SPEC } from './control-state-spec.js?v=0.36.1';
 import { streamDescriptor,negotiateStreamCapabilities,validateControlValue } from './stream-contract.js?v=0.36.1';
 import { behavior,validateBehavior } from './widget-behavior.js?v=0.36.1';
 import { executorReason,advancedKind,schedulePayload,thermostatPayload } from './advanced-controls.js?v=0.38.0';
-import { mountRgbPicker,rgbHex } from './rgb-picker.js?v=3.0.1';
+import { mountRgbPicker,rgbHex } from './rgb-picker.js?v=3.0.4';
+/** Preserve the displayed state of a mounted control without its listeners or transport. */
+export function passiveOutputFace(display){
+ const face=display.cloneNode(true);
+ face.classList.add('layout-control-preview');
+ face.querySelectorAll('fieldset,button,input,select,textarea').forEach(node=>{node.disabled=true;});
+ face.querySelectorAll('a').forEach(node=>node.removeAttribute('href'));
+ return face;
+}
 /** Foreground owner controls. Draft input is never sent by render, refresh or reconnect. */
-export function renderOutputControl(w,{channel,device,request,canUse,active,client,channels=[channel],readings=()=>[],onDispose=()=>{},isOwner=canUse,isOnline=()=>globalThis.navigator?.onLine!==false,statusSource=null}){
+export function renderOutputControl(w,{channel,device,request,canUse,active,client,channels=[channel],readings=()=>[],onDispose=()=>{},isOwner=canUse,isOnline=()=>globalThis.navigator?.onLine!==false,statusSource=null,readOnly=false}){
  const box=document.createElement('div');box.className='io-control';
  const simpleSwitch=w.type==='switch';
 
@@ -24,7 +32,7 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
  const setup=document.createElement('a');setup.textContent='Set up this board';setup.href='./studio.html?project='+encodeURIComponent(device.project_id||'')+'&tab=cloud&device='+encodeURIComponent(device.id);setup.hidden=true;box.append(setup);
  let lastConfirmedBoot=null,lastReport=null;let stopped=false,state,descriptor,poll,hold,holding=false,intent=0,ready=false,built=false,connectTimer,wasLive=true,checking=false,failed=false,lastCheck=0,sending=false;
  let rgbDraftDirty=false,rgbPicker=null,toggle=null,confirmedSwitch=null,commandAwaitingAck=false,lastReportedCommand='',reportInFlight='',confirmedAt=0,pendingRead=null,manualLookup=null,requestedHere=false;
- const live=()=>!stopped&&active()&&canUse()&&!document.hidden,b=behavior(w),rpc=(name,body)=>request('/rest/v1/rpc/'+name,{method:'POST',authenticated:true,body});
+ const live=()=>!readOnly&&!stopped&&active()&&canUse()&&!document.hidden,b=behavior(w),rpc=(name,body)=>request('/rest/v1/rpc/'+name,{method:'POST',authenticated:true,body});
  const label=(name,node)=>{const row=document.createElement('label'),title=document.createElement('span');title.textContent=name;row.append(title,node);fields.append(row);return node;};
  const button=(name,fn)=>{const node=document.createElement('button');node.type='button';node.textContent=name;node.addEventListener('click',()=>{try{fn();}catch(e){status.textContent=e.message;}});fields.append(node);return node;};
  function valueInput(c,name=c.title){const io=c.config?.io||{};let node;if(io.type==='enum'){node=document.createElement('select');for(const option of io.enum_values||[]){const o=document.createElement('option');o.value=option.value;o.textContent=option.label;node.append(o);}}else if(io.type==='text'&&w.type==='entry'&&b.variant==='multiline'){node=document.createElement('textarea');node.rows=4;node.maxLength=512;}else{node=document.createElement('input');node.type=io.type==='boolean'?'checkbox':io.type==='text'?'text':'number';if(node.type==='text')node.maxLength=512;if(node.type==='number'){node.min=io.min??0;node.max=io.max??100;node.step=io.step??1;}}node.setAttribute('aria-label',name);label(name,node);return{node,read:()=>{if(io.type==='boolean')return node.checked;if(io.type==='number'){if(!node.value.trim())throw Error('Enter a number for '+name+' before Apply.');return Number(node.value);}return node.value;}};}
@@ -201,6 +209,12 @@ export function renderOutputControl(w,{channel,device,request,canUse,active,clie
   }).catch(()=>{}).finally(()=>{if(reportInFlight===command)reportInFlight='';});
  }
  async function checkBoard(){if(checking||!live())return;if(channel.direction==='input'){updateConnection();return;}checking=true;lastCheck=Date.now();try{const next=await load();if(!live())return;const priorBoot=lastConfirmedBoot,nextBoot=authenticatedControlBoot(next,device);if(priorBoot&&nextBoot&&nextBoot!==priorBoot){release();commandAwaitingAck=false;lastReportedCommand='';intent++;clearTimeout(poll);confirmedAt=0;pendingRead=manualLookup=null;requestedHere=false;setSwitchSignal(null);feedback.textContent='';progress('unconfirmed','Board restarted','Review the draft before requesting another change.');}if(nextBoot)lastConfirmedBoot=nextBoot;state=lastReport=next;failed=false;const check=updateConnection();if(check.ready){descriptor=desc(channel);if(!built){fields.replaceChildren();build();}syncReportedOutput(next);}updateConnection();}catch(error){if(!stopped&&live()){state=null;failed=true;updateConnection();}}finally{checking=false;}}
+ if(readOnly){
+   try{descriptor=desc(channel);build({draft:true});}catch{}
+   connection.textContent='Board not ready';
+   connection.dataset.state='stale';
+   return passiveOutputFace(box);
+ }
  const retry=document.createElement('button');retry.type='button';retry.textContent='Check board connection';retry.addEventListener('click',async()=>{retry.disabled=true;try{await checkBoard();if(manualLookup)manualLookup();}finally{retry.disabled=false;}});box.append(retry);
  const checkConnection=()=>{if(stopped)return;const current=live();if(!current){if(holding)release();}updateConnection();if(current&&pendingRead){const resume=pendingRead;pendingRead=null;resume();}
  if(current&&(!wasLive||Date.now()-lastCheck>=(failed?4500:CONTROL_STATE_SPEC.pollMs)))checkBoard();wasLive=current;clearTimeout(connectTimer);connectTimer=setTimeout(checkConnection,1000);};

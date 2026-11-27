@@ -17,3 +17,32 @@
 .phone-layout-settings > summary { min-height:44px; padding:8px 0; cursor:pointer; font-weight:650; }
 .dashboard-phone-editor { padding:4px 12px; }
 .phone-layout-settings[open] { padding-bottom:8px; }
+
+
+/* The real dashboard renderer uses the same projected columns and gaps as Android. */
+#dashboard-canvas.phone-dashboard-layout {
+  gap:14px; align-items:stretch;
+}
+#dashboard-canvas.phone-dashboard-layout :is(.dashboard-panel-grid) { gap:14px; }
+#dashboard-canvas.phone-dashboard-layout .dashboard-widget[data-phone-placement] {
+  grid-column:var(--phone-column) / span var(--phone-cols)!important;
+  grid-row:var(--phone-row)!important;
+  min-width:0; padding:14px; border-radius:14px;
+}
+#dashboard-canvas.phone-dashboard-layout .dashboard-widget-heading {
+  align-items:center; gap:8px; margin-bottom:10px;
+}
+#dashboard-canvas.phone-dashboard-layout .dashboard-widget-heading h3:not([data-text-size]) {
+  font-size:calc(13px * var(--text-scale,1)); line-height:1.35;
+}
+#dashboard-canvas.phone-dashboard-layout .widget-reading:not([data-text-size]) {
+  font-size:calc(38px * var(--text-scale,1)); line-height:1.1;
+}
+#dashboard-canvas.phone-dashboard-layout .widget-pin { font-size:calc(10px * var(--text-scale,1)); }
+#dashboard-canvas.phone-dashboard-layout .widget-note-copy:not([data-text-size]) {
+  font-size:calc(13px * var(--text-scale,1));
+}
+#dashboard-canvas.phone-dashboard-layout .widget-section-heading {
+  font-size:calc(22px * var(--text-scale,1));
+}
+.layout-control-preview fieldset:disabled .rgb-wheel.enabled { opacity:1; }

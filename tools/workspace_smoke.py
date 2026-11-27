@@ -338,6 +338,7 @@ def exercise(browser, screenshot_dir=None):
     page.locator('#widget-section').select_option(label='Lab space')
     page.locator('#widget-apply').click()
     expect(page.locator('#widget-dialog')).not_to_be_visible()
+    canvas.locator('summary[aria-label="More options for Lab log"]').click()
     canvas.get_by_role('button', name='Move Lab log earlier', exact=True).click()
     resize = canvas.get_by_role('button', name=re.compile('^Resize Lab log'))
     resize.press('ArrowRight')
@@ -479,6 +480,57 @@ def exercise(browser, screenshot_dir=None):
     mobile.close()
 
 
+def exercise_layout_parity(browser):
+    fixture = Workspace()
+    layout = fixture.record['config']
+    layout['custom_phone_layout'] = True
+    layout['widgets'][0]['phone'] = {'position': 1, 'span': 6}
+    layout['widgets'][1]['phone'] = {'visible': False}
+    layout['widgets'][2]['phone'] = {'position': 0, 'span': 6}
+    page = browser.new_page(viewport={'width': 1400, 'height': 900}, service_workers='block')
+    page.context.route('**/*', fixture.handle)
+    page.goto(SITE)
+    login(page, 'student')
+    open_project(page, 'Greenhouse Lab')
+    dashboard(page)
+    canvas = page.locator('#dashboard-canvas')
+    expect(canvas).to_contain_text('27.4')
+    wheel = canvas.locator('.rgb-wheel')
+    expect(wheel).to_be_visible()
+
+    def positions():
+        return canvas.evaluate("""canvas => Array.from(canvas.children).map(card => {
+            const {x,y,width,height} = card.getBoundingClientRect();
+            const box = canvas.getBoundingClientRect();
+            return [card.dataset.widgetId,Math.round(x-box.x),Math.round(y-box.y),Math.round(width),Math.round(height)];
+        })""")
+
+    def same_cards_when_editing():
+        prior = positions()
+        page.locator('#dashboard-edit').click()
+        expect(wheel).to_be_visible()
+        expect(canvas.get_by_role('slider', name='Brightness')).to_be_disabled()
+        expect(canvas.get_by_role('switch', name='Relay')).to_be_disabled()
+        canvas.locator('button.output-toggle').dispatch_event('click')
+        assert positions() == prior, (positions(), prior)
+        page.locator('#dashboard-edit-extras summary').click()
+        page.get_by_role('button', name='Exit editor', exact=True).click()
+
+    same_cards_when_editing()
+    page.locator('#dashboard-phone-preview').click()
+    expect(canvas.locator('.widget-face')).to_have_count(0)
+    expect(canvas).to_contain_text('27.4')
+    expect(canvas).not_to_contain_text('Humidity')
+    expect(canvas.locator(':scope > article').first).to_contain_text('Sound activity')
+    assert [size[3] for size in positions()[:2]] == [170, 170]
+    assert_card_fits(canvas.locator('article[data-widget-kind=rgb]'))
+    same_cards_when_editing()
+    page.locator('#dashboard-phone-scale').select_option('1.5')
+    assert positions()[0][3] == 354
+    assert not fixture.writes and not fixture.command_posts and not fixture.violations
+    page.context.close()
+
+
 def exercise_hardware(browser, screenshot_dir=None):
     fixture=Workspace(hardware=True)
     context=browser.new_context(viewport={'width': 390,'height': 844}, is_mobile=True,
@@ -541,6 +593,7 @@ if __name__ == '__main__':
         browser = pw.chromium.launch(executable_path=args.chromium)
         try:
             exercise(browser,args.screenshots)
+            exercise_layout_parity(browser)
             exercise_hardware(browser,args.screenshots)
         finally:
             browser.close()

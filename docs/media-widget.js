@@ -47,19 +47,21 @@ export function createMediaWidgets({canUse}){
       for(const track of stream.getTracks())track.addEventListener?.('ended',()=>{if(record.stream===stream)mediaError(record,'Camera disconnected. Select Start to try again.');});
     }catch(err){if(!active(record,generation))return;const text=err.name==='NotAllowedError'?'Camera permission was denied or blocked. Allow camera access in your browser; an embedded preview may require opening the website directly.':err.name==='NotFoundError'?'No camera was found. Connect a webcam or choose a local image / video.':err.name==='NotReadableError'?'The camera is busy or unavailable. Close other camera apps and try again.':'Camera could not start. Check browser permissions or choose a local file.';mediaError(record,text);}
   }
-  function render(w){
-    const fingerprint=JSON.stringify([w.mode,w.url||'',w.facing||'']);let record=records.get(w.id);
+  function render(w,readOnly=false){
+    const fingerprint=JSON.stringify([w.mode,w.url||'',w.facing||'']);let record=readOnly?null:records.get(w.id);
     if(record&&record.fingerprint!==fingerprint){dispose(record);record=null;}
     if(record){record.w=w;return record.root;}
     const root=element('div','camera-widget'),kind=element('p','camera-source-label',label[w.mode]),preview=element('div','camera-preview'),status=element('p','camera-status','Select Start to preview. Nothing loads automatically.');preview.hidden=true;status.setAttribute('role','status');
     const actions=element('div','camera-actions'),startButton=element('button','button secondary',w.mode==='local'?'Choose image / video':'Start preview'),stopButton=element('button','text-button','Stop'),file=element('input','camera-file');startButton.type=stopButton.type='button';stopButton.disabled=true;file.type='file';file.accept='image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm';file.hidden=true;
-    record={id:w.id,w,fingerprint,root,preview,status,start:startButton,stop:stopButton,file,media:null,stream:null,objectUrl:null,generation:0,pending:false,started:false};records.set(w.id,record);
+    record={id:w.id,w,fingerprint,root,preview,status,start:startButton,stop:stopButton,file,media:null,stream:null,objectUrl:null,generation:0,pending:false,started:false};if(!readOnly)records.set(w.id,record);else startButton.disabled=true;
+    if(!readOnly){
     startButton.addEventListener('click',()=>start(record));stopButton.addEventListener('click',()=>stop(record));
     file.addEventListener('change',()=>{
       const selected=file.files?.[0];if(!selected||!canUse()||document.hidden===true)return;
       if(!['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm'].includes(selected.type)||selected.size>50*1024*1024){stop(record,'Choose a JPG, PNG, WebP, GIF, MP4, or WebM file up to 50 MB.');return;}
       stop(record);const media=setMedia(record,selected.type.startsWith('video/')?'video':'img');record.objectUrl=URL.createObjectURL(selected);started(record,'Local file preview · No upload. Choose the file again after reopening this page.');media.src=record.objectUrl;
     });
+    }
     actions.append(startButton,stopButton);root.append(kind,preview,status,actions,file);
     const help=element('p','camera-help',w.mode==='webcam'?'Browser permission is required. Video only; no microphone, recording, or upload.':w.mode==='local'?'Preview a saved experiment image or clip. File contents and file paths are not saved to Supabase.':'Use a browser-compatible HTTPS source. ESP32-CAM HTTP streams need an HTTPS bridge; RTSP links cannot play directly.');root.append(help);return root;
   }
