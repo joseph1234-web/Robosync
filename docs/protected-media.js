@@ -1,6 +1,6 @@
 import { SUPABASE_URL,PUBLISHABLE_KEY } from './public-config.js?v=0.36.1';
 
-export function protectedMedia(widget,{request,getSession,canUse,onDispose}){
+export function protectedMedia(widget,{request,getSession,canUse,onDispose,readOnly=false}){
   const box=document.createElement('div'),frame=document.createElement('div');
   const placeholder=document.createElement('span'),image=document.createElement('img');
   const state=document.createElement('p'),button=document.createElement('button');
@@ -11,6 +11,7 @@ export function protectedMedia(widget,{request,getSession,canUse,onDispose}){
   button.className='button secondary';button.type='button';button.textContent='Open protected snapshot';
   frame.append(placeholder,image);box.append(frame,state,button);
 
+  if(readOnly){button.disabled=true;return box;}
   const owner=getSession()?.user?.id;
   let opened=false,disposed=false,epoch=0,timer,abort,url;
   const authorized=()=>!disposed&&!document.hidden&&!!owner&&owner===getSession()?.user?.id&&canUse();

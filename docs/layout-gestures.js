@@ -7,7 +7,7 @@ export function normalizeWidgetSize(size){
 export function createLayoutGestures({canvas,canEdit,onAdd,onMove,onResize,onCancel,onAnnounce,phoneMode=()=>false}){
   let gesture=null,ghost=null,suppressUntil=0;
   const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
-  function cleanup(){ghost?.remove();ghost=null;canvas.classList.toggle('drop-active',false);for(const card of canvas.children)card.classList.toggle('drag-target',false);gesture=null;}
+  function cleanup(){ghost?.remove();ghost=null;canvas.classList.toggle('drop-active',false);for(const card of canvas.querySelectorAll('.drag-target'))card.classList.remove('drag-target');gesture=null;}
   function cancel(){const had=!!gesture;cleanup();if(had)onCancel();}
   function begin(event,action){
     if(!canEdit()||event.button>0||gesture)return;
@@ -23,10 +23,11 @@ export function createLayoutGestures({canvas,canEdit,onAdd,onMove,onResize,onCan
     }
     if(!ghost){ghost=document.createElement('div');ghost.className='widget-drag-ghost';ghost.textContent=g.kind==='add'?'＋ '+g.label:'↕ '+g.label;ghost.setAttribute('aria-hidden','true');document.body.append(ghost);}
     ghost.style.left=event.clientX+14+'px';ghost.style.top=event.clientY+14+'px';
-    const rect=canvas.getBoundingClientRect(),inside=event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom;
-    canvas.classList.toggle('drop-active',inside);g.target=null;for(const card of canvas.children)card.classList.toggle('drag-target',false);
+    const parent=g.kind==='move'?g.card?.parentElement||canvas:canvas;
+    const rect=parent.getBoundingClientRect(),inside=event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom;
+    canvas.classList.toggle('drop-active',inside);g.target=null;for(const card of canvas.querySelectorAll('.drag-target'))card.classList.remove('drag-target');
     if(inside){
-      const hit=document.elementFromPoint(event.clientX,event.clientY)?.closest?.('[data-widget-id]'),cards=[...canvas.children],index=cards.indexOf(hit);
+      const hit=document.elementFromPoint(event.clientX,event.clientY)?.closest?.('[data-widget-id]'),cards=[...parent.children],index=cards.indexOf(hit);
       if(index>=0){const r=hit.getBoundingClientRect(),after=event.clientY>r.top+r.height*.65||(Math.abs(event.clientY-(r.top+r.height/2))<r.height*.3&&event.clientX>r.left+r.width/2);g.target={index:index+(after?1:0)};hit.classList.toggle('drag-target',true);}
       else g.target={index:cards.length};
     }
@@ -38,9 +39,14 @@ export function createLayoutGestures({canvas,canEdit,onAdd,onMove,onResize,onCan
     if(g.kind==='resize'){if(g.next)onResize(g.id,g.next);else onCancel();return;}
     if(!g.target){onCancel();onAnnounce('Drop cancelled. Place the widget inside the dashboard.');return;}
     if(g.kind==='add')onAdd(g.type,g.target.index);
-    else{const from=[...canvas.children].findIndex(card=>card.getAttribute('data-widget-id')===g.id);onMove(g.id,g.target.index-(from<g.target.index?1:0));}
+    else{
+      const ids=[...(g.card?.parentElement||canvas).children].map(card=>card.getAttribute('data-widget-id'));
+      const from=ids.indexOf(g.id),index=g.target.index-(from>=0&&from<g.target.index?1:0);
+      const peers=ids.filter(id=>id&&id!==g.id);
+      onMove(g.id,index,{before:peers[index],after:peers[index-1]});
+    }
   }
   document.addEventListener('pointermove',update,{passive:false});document.addEventListener('pointerup',finish);document.addEventListener('pointercancel',event=>{if(gesture?.pointerId===event.pointerId)cancel();});
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&gesture){event.preventDefault();cancel();}});addEventListener('blur',cancel);
-  return {beginAdd:(e,type,label)=>begin(e,{kind:'add',type,label}),beginMove:(e,id,label)=>begin(e,{kind:'move',id,label}),beginResize:(e,id,card,size)=>begin(e,{kind:'resize',id,card,size,startHeight:card.getBoundingClientRect().height}),isActive:()=>!!gesture,cancel,consumeClick:()=>Date.now()<suppressUntil};
+  return {beginAdd:(e,type,label)=>begin(e,{kind:'add',type,label}),beginMove:(e,id,label)=>begin(e,{kind:'move',id,label,card:e.currentTarget?.closest('[data-widget-id]')}),beginResize:(e,id,card,size)=>begin(e,{kind:'resize',id,card,size,startHeight:card.getBoundingClientRect().height}),isActive:()=>!!gesture,cancel,consumeClick:()=>Date.now()<suppressUntil};
 }

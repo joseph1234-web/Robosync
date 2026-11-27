@@ -1,4 +1,4 @@
-import { renderOutputControl } from './output-control-view.js?v=3.0.2';
+import { renderOutputControl, passiveOutputFace } from './output-control-view.js?v=3.0.4';
 import { PHONE_LAYOUT_SPEC } from './phone-layout-spec.js?v=0.36.1';
 import { WIDGET_CONTRACT } from './widget-contract.js?v=0.36.1';
 import { streamDescriptor, negotiateStreamCapabilities, validateControlValue } from './stream-contract.js?v=0.36.1';
@@ -66,4 +66,4 @@ export function createCommandClient({rpc,canUse,now=Date.now,uuid=()=>crypto.ran
     pending:()=>pending.size
   };
 }
-export { renderOutputControl };
+export { renderOutputControl, passiveOutputFace };

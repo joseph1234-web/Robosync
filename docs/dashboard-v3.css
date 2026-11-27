@@ -70,11 +70,11 @@
 .workspace .dashboard-status-row { font-size:.825rem; }
 .workspace .io-control .command-result { min-height:20px; }
 
-.workspace .dashboard-widget:not(.editable) .widget-data-updated { margin:8px 0 12px; }
-.workspace .dashboard-widget:not(.editable) .widget-binding { padding-top:9px; }
-.workspace .dashboard-widget:not(.editable) .widget-progress-value { margin-bottom:3px; }
-.workspace .dashboard-widget:not(.editable) .widget-no-data { min-height:0; margin-bottom:12px; }
+.workspace .dashboard-widget .widget-data-updated { margin:8px 0 12px; }
+.workspace .dashboard-widget .widget-binding { padding-top:9px; }
+.workspace .dashboard-widget .widget-progress-value { margin-bottom:3px; }
+.workspace .dashboard-widget .widget-no-data { min-height:0; margin-bottom:12px; }
 @media (max-width:640px) {
-  .workspace .dashboard-widget:not(.editable) .widget-reading { margin-bottom:2px; }
-  .workspace .dashboard-widget:not(.editable) .widget-data-updated { margin-bottom:10px; }
+  .workspace .dashboard-widget .widget-reading { margin-bottom:2px; }
+  .workspace .dashboard-widget .widget-data-updated { margin-bottom:10px; }
 }
